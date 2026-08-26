@@ -38,6 +38,8 @@ _REDACTED_FIELDS: frozenset = frozenset({
 # Rejections are security-relevant and are never sampled.
 _TICKET_MINT_SAMPLE_EVERY = 50
 _ticket_mint_count = 0
+_ticket_mint_lock = threading.Lock()
+_ticket_mint_since_last_logged = 0
 
 
 class AuditEvent(enum.Enum):
@@ -85,11 +87,20 @@ def audit_log(event: AuditEvent, **fields: Any) -> None:
     Missing log directory is created. Write failures are logged at WARNING
     but never raise — auth must not fail because the audit logger broke.
     """
-    global _ticket_mint_count
+    global _ticket_mint_count, _ticket_mint_since_last_logged
     if event is AuditEvent.WS_TICKET_MINTED:
-        _ticket_mint_count += 1
-        if (_ticket_mint_count - 1) % _TICKET_MINT_SAMPLE_EVERY != 0:
+        with _ticket_mint_lock:
+            _ticket_mint_count += 1
+            _ticket_mint_since_last_logged += 1
+            current_count = _ticket_mint_count
+            suppressed_since_last = _ticket_mint_since_last_logged - 1
+            should_log = (current_count - 1) % _TICKET_MINT_SAMPLE_EVERY == 0
+            if should_log:
+                _ticket_mint_since_last_logged = 0
+        if not should_log:
             return
+        # Add suppressed count to the logged event so operators can see burst patterns
+        fields = {**fields, "suppressed_mints_since_last_logged": suppressed_since_last}
     safe_fields = {
         k: v for k, v in fields.items()
         if k not in _REDACTED_FIELDS
