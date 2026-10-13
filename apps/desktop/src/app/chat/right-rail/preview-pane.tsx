@@ -69,10 +69,11 @@ import {
 } from './preview-console'
 import { type ConsoleEntry } from './preview-console-state'
 import { previewConsoleState } from './preview-console-store'
-import { LocalFilePreview, PreviewEmptyState, PreviewModeSwitcher } from './preview-file'
+import { PreviewEmptyState, PreviewModeSwitcher } from './preview-file'
 import { usePreviewGuestOffscreen } from './preview-guest-offscreen'
 import { type PreviewInputEvent, registerPreviewInput, toWebviewInputSpace } from './preview-input'
 import { PREVIEW_BROWSER_ATTR, registerPreviewNav } from './preview-nav'
+import { FilePreview } from './preview-plugin-file'
 import { registerPreviewPageReader } from './preview-reader'
 import { registerPreviewScriptRunner } from './preview-script-runner'
 import { RealProfileConsentDialog } from './real-profile-consent-dialog'
@@ -1551,7 +1552,7 @@ export function PreviewPane({
             (target.kind === 'artifact' ? (
               <ArtifactPreview onClose={onClose} target={target} />
             ) : (
-              <LocalFilePreview
+              <FilePreview
                 onClose={onClose}
                 onSelectRendered={canRenderHtmlFile ? () => selectRenderMode('preview') : undefined}
                 reloadKey={localReloadKey}

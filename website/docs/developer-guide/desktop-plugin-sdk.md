@@ -895,6 +895,39 @@ Migration for **rss-reader** (#115972): replace the stubbed `/preview` → 501 �
 chain with `<SandboxedFrame src={article.url} title={article.title} />` inside
 the workspace page; drop the leftover `.rss-browser-frame-host webview` CSS.
 
+### File previewers — render file types core can't show
+
+`FILE_PREVIEW_AREA` makes the preview rail a contribution area. Core previews
+images, PDFs, HTML and text itself; any other file lands on the "This looks
+like a binary file" notice. Register a previewer for the extensions you can
+render and the rail mounts it in place of that notice when the user previews
+such a file — from the Files panel, a file card, or a link.
+
+```js
+import { FILE_PREVIEW_AREA } from '@hermes/plugin-sdk'
+
+ctx.register({
+  id: 'docx',
+  area: FILE_PREVIEW_AREA,
+  data: {
+    extensions: ['docx', 'odt'], // case-insensitive, no dot
+    priority: 10,                // higher wins when plugins collide; ties → first registered
+    render: ({ path, name, extension, byteSize, mimeType, fallback }) =>
+      jsx(MyDocViewer, { path, onError: fallback })
+  }
+})
+```
+
+- `path` is a path on the **connected backend**, which may be a remote
+  gateway: fetch the bytes through your own `ctx.rest` route rather than a
+  renderer-side file read.
+- `fallback()` hands this file back to core's notice (and its *Preview anyway*),
+  for files your previewer can't handle after all.
+- Core kinds are not claimable: registering `pdf` or `png` is ignored, so a
+  plugin can add formats but never replace one core already renders.
+- The render is wrapped in the contribution error boundary and remounted per
+  file; registering or unregistering updates open previews in place.
+
 ### Transcript directives — inline components the model addresses
 
 `TRANSCRIPT_DIRECTIVE_AREA` makes the transcript itself a contribution area.

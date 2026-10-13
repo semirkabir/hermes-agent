@@ -1929,9 +1929,9 @@ export {
  *  Plugins must route animation clocks through this instead of raw rAF loops
  *  so a disabled plugin or an empty roster costs zero frames. */
 export { type BudgetedLoop, type BudgetedLoopOptions, createBudgetedLoop } from '@/lib/budgeted-loop'
-/** The blank transcript as a contribution area: claim the sessions you own and
- *  render what stands in the gap. Core's own splash keeps a fresh draft. */
+/** Areas: the blank transcript (claim sessions you own) and the preview rail (render files core can't show). */
 export { CHAT_EMPTY_AREA, type ChatEmptyContribution, type ChatEmptyProps } from '@/lib/chat-empty'
+export { FILE_PREVIEW_AREA, type FilePreviewContribution, type FilePreviewProps } from '@/lib/file-preview'
 /** THE confirm flow for guarded model switches — when a gateway model-switch
  *  RPC answers `confirm_required` (data-policy / expensive-model guard),
  *  route it through this shared applier instead of forking a per-surface
