@@ -77,26 +77,57 @@ def _rows(db, sql: str, cutoff: float) -> list[dict[str, Any]]:
     return [dict(r) for r in db._conn.execute(sql, (cutoff,)).fetchall()]
 
 
+# sessions.* counters are lifetime totals, so bucketing them on started_at piles a multi-day session's
+# whole usage onto the day it began. Spread each session's counters over the local days it was active,
+# weighted by its assistant messages per day (a close proxy for API calls: one assistant message per
+# call). A session with no assistant messages falls back to its start day. Days are local calendar
+# days per row (DST-correct), the same day /insights uses (agent/insights.py); fractions that land
+# before the window are dropped. The single ``?`` is the window cutoff (epoch seconds).
+_DAILY_USAGE_SQL = """
+    WITH p AS (SELECT ? AS cutoff),
+    win AS (
+        SELECT id, started_at, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens,
+               estimated_cost_usd, actual_cost_usd, api_call_count
+        FROM sessions
+        WHERE started_at > (SELECT cutoff FROM p)
+           OR COALESCE(last_activity_at, ended_at, started_at) >= (SELECT cutoff FROM p)
+    ),
+    per_day AS (
+        SELECT m.session_id AS sid, date(m.timestamp, 'unixepoch', 'localtime') AS day, COUNT(*) AS n
+        FROM messages m
+        WHERE m.role = 'assistant' AND m.session_id IN (SELECT id FROM win)
+        GROUP BY m.session_id, day
+    ),
+    totals AS (SELECT sid, SUM(n) AS total FROM per_day GROUP BY sid),
+    alloc AS (
+        SELECT d.sid, d.day, CAST(d.n AS REAL) / t.total AS frac
+        FROM per_day d JOIN totals t ON t.sid = d.sid
+        UNION ALL
+        SELECT w.id, date(w.started_at, 'unixepoch', 'localtime'), 1.0
+        FROM win w WHERE w.id NOT IN (SELECT sid FROM totals)
+    )
+    SELECT a.day AS day,
+           CAST(ROUND(SUM(COALESCE(w.input_tokens, 0) * a.frac)) AS INTEGER) AS input_tokens,
+           CAST(ROUND(SUM(COALESCE(w.output_tokens, 0) * a.frac)) AS INTEGER) AS output_tokens,
+           CAST(ROUND(SUM(COALESCE(w.cache_read_tokens, 0) * a.frac)) AS INTEGER) AS cache_read_tokens,
+           CAST(ROUND(SUM(COALESCE(w.reasoning_tokens, 0) * a.frac)) AS INTEGER) AS reasoning_tokens,
+           COALESCE(SUM(COALESCE(w.estimated_cost_usd, 0) * a.frac), 0) AS estimated_cost,
+           COALESCE(SUM(COALESCE(w.actual_cost_usd, 0) * a.frac), 0) AS actual_cost,
+           COUNT(DISTINCT a.sid) AS sessions,
+           CAST(ROUND(SUM(COALESCE(w.api_call_count, 0) * a.frac)) AS INTEGER) AS api_calls
+    FROM alloc a JOIN win w ON w.id = a.sid
+    WHERE a.day >= date((SELECT cutoff FROM p), 'unixepoch', 'localtime')
+    GROUP BY a.day ORDER BY a.day
+"""
+
+
 def _get_usage_analytics(days: int = 30, profile: Optional[str] = None):
     from agent.insights import InsightsEngine
 
     db = _open_session_db_for_profile(profile, read_only=True)
     try:
         cutoff = time.time() - (days * 86400)
-        # Local calendar day, per-row (DST-correct), the same day /insights uses (agent/insights.py).
-        daily = _rows(db, """
-            SELECT date(started_at, 'unixepoch', 'localtime') as day,
-                   SUM(input_tokens) as input_tokens,
-                   SUM(output_tokens) as output_tokens,
-                   SUM(cache_read_tokens) as cache_read_tokens,
-                   SUM(reasoning_tokens) as reasoning_tokens,
-                   COALESCE(SUM(estimated_cost_usd), 0) as estimated_cost,
-                   COALESCE(SUM(actual_cost_usd), 0) as actual_cost,
-                   COUNT(*) as sessions,
-                   SUM(COALESCE(api_call_count, 0)) as api_calls
-            FROM sessions WHERE started_at > ?
-            GROUP BY day ORDER BY day
-        """, cutoff)
+        daily = _rows(db, _DAILY_USAGE_SQL, cutoff)
 
         by_model = _rows(db, """
             SELECT model,
