@@ -177,33 +177,36 @@ async def get_client_voice_config(profile: Optional[str] = None):
 
 @router.get("/api/audio/voice-live/status")
 async def get_voice_live_status(profile: Optional[str] = None):
-    """Which voice chat mode the profile selected (``chained`` | ``gpt-live``) and whether GPT-Live
-    can start. Non-secret: the desktop decides which conversation engine to mount from this."""
-    from tools.voice_live import resolve_gpt_live_status
-    with http_failure("GPT-Live status resolution failed", 500, "GPT-Live status failed"):
-        result = await _run_config_scoped(profile, resolve_gpt_live_status)
+    """Which voice chat mode the profile selected (``chained``, ``gpt-live`` or a plugin engine),
+    whether it can start, and the live engines installed. Non-secret: the desktop decides which
+    conversation engine to mount from this."""
+    from tools.voice_live import resolve_voice_live_status
+    with http_failure("Voice live status resolution failed", 500, "Voice live status failed"):
+        result = await _run_config_scoped(profile, resolve_voice_live_status)
     return {"ok": True, **result}
 
 
 @router.post("/api/audio/voice-live/session")
 async def create_voice_live_session(payload: VoiceLiveSessionRequest, profile: Optional[str] = None):
-    """Exchange the renderer's WebRTC SDP offer for a GPT-Live session answer.
+    """The selected live engine's server-side session step (GPT-Live: exchange the renderer's
+    WebRTC SDP offer for the answer).
 
-    The project API key stays on this host; the renderer only receives the session id and the
-    SDP answer. Client delegation is fixed at creation: every ``session.delegation.created`` the
-    renderer receives becomes a Hermes turn on the session it belongs to.
+    The API key stays on this host; the renderer only receives what the engine hands back (a
+    session id and SDP answer, or an ephemeral client secret). Every delegation the renderer
+    receives becomes a Hermes turn on the session it belongs to.
     """
-    from tools.voice_live import create_webrtc_session
-    # Validate emptiness only: the vendor's SDP parser needs the offer byte-exact, including the
-    # trailing CRLF (a stripped offer answers 400 "failed to unmarshal SDP: EOF").
-    sdp = payload.sdp or ""
-    if not sdp.strip():
-        raise HTTPException(status_code=400, detail="An SDP offer is required")
+    from agent.voice_live_engine import VoiceLiveBadRequest, VoiceLiveNotConfigured, VoiceLiveUpstreamError
+    from tools.voice_live import create_live_session
+    # Pass the offer byte-exact: the vendor's SDP parser needs the trailing CRLF (a stripped
+    # offer answers 400 "failed to unmarshal SDP: EOF").
+    request = {**(payload.engine_request or {}), **({"sdp": payload.sdp} if payload.sdp else {})}
     try:
-        result = await _run_config_scoped(profile, lambda: create_webrtc_session(sdp, payload.history))
-    except ValueError as exc:
+        result = await _run_config_scoped(profile, lambda: create_live_session(request, payload.history))
+    except VoiceLiveBadRequest as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except VoiceLiveNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    except RuntimeError as exc:
+    except VoiceLiveUpstreamError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return {"ok": True, **result}
 

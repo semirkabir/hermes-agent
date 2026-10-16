@@ -8,3 +8,12 @@ export const STATUSBAR_AREAS = { left: 'statusBar.left', right: 'statusBar.right
  *  runs once per registration, not once per route. Page-owned controls that
  *  should exist only while a page is up go to `WORKSPACE_PAGE_HEADER_AREA`. */
 export const TITLEBAR_AREAS = { center: 'titleBar.center', left: 'titleBar.left', right: 'titleBar.right' } as const
+
+/** Live voice engines: a plugin's renderer half for `voice.voice_chat_mode` (see `@/lib/voice-live-engines`). */
+export {
+  requestLiveEngineSession,
+  VOICE_LIVE_ENGINES_AREA,
+  type VoiceLiveEngineContribution,
+  type VoiceLiveTransport,
+  type VoiceLiveTransportFactory
+} from '@/lib/voice-live-engines'

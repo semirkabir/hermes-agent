@@ -13,6 +13,7 @@ import {
 } from '@/lib/spoken-reply'
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
 import { toLiveHistory } from '@/lib/voice-live'
+import { resolveLiveTransport } from '@/lib/voice-live-engines'
 import { clearWakeIndicator, syncWakeIndicatorWithVoice } from '@/lib/wake-indicator'
 import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
@@ -95,6 +96,7 @@ export function useComposerVoice({
   // Engine selection is latched at conversation START (a Settings change
   // applies to the next conversation, never mid-call).
   const [liveEngineActive, setLiveEngineActive] = useState(false)
+  const [liveEngine, setLiveEngine] = useState('gpt-live')
   // Barge-in can retain a submit callback from a render where the interrupted
   // turn was still busy. Read the current gate when its transcript arrives so
   // that stale closure does not silently drop the next voice turn.
@@ -243,6 +245,7 @@ export function useComposerVoice({
     busy,
     consumePendingResponse,
     enabled: voiceConversationActive && liveEngineActive,
+    engine: liveEngine,
     onFatalError: () => setVoiceConversationActive(false),
     onInterrupt,
     onStopWord: () => setVoiceConversationActive(false),
@@ -255,24 +258,34 @@ export function useComposerVoice({
 
   /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
    *  decided in the same state batch so the other engine never sees a frame of
-   *  `enabled`. gpt-live selected but not startable (no OpenAI key on the
-   *  gateway) falls back to chained with a notice rather than a dead button. */
+   *  `enabled`. A live engine selected but not startable (no key on the
+   *  gateway, no desktop half) falls back to chained with a notice rather than
+   *  a dead button. */
   const activateConversation = useCallback(() => {
     const status = $voiceLiveStatus.get()
+    const mode = selectedVoiceChatMode(status)
     let live = false
 
-    if (selectedVoiceChatMode(status) === 'gpt-live') {
-      if (status?.available) {
-        live = true
-      } else {
+    if (mode !== 'chained') {
+      // Both halves must be present: the gateway engine ready AND a desktop transport for it.
+      const reason = !status?.available
+        ? (status?.reason ?? 'not configured')
+        : resolveLiveTransport(mode)
+          ? null
+          : `no desktop half installed for ${mode}`
+
+      if (reason) {
         notify({
           id: 'voice-live-unavailable',
           kind: 'warning',
-          message: t.notifications.voice.liveUnavailable(status?.reason ?? 'not configured')
+          message: t.notifications.voice.liveUnavailable(reason)
         })
+      } else {
+        live = true
       }
     }
 
+    setLiveEngine(mode)
     setLiveEngineActive(live)
     setVoiceConversationActive(true)
     recordFeatureUse('voice_conversation')

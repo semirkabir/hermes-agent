@@ -372,8 +372,18 @@ def _word_setters() -> dict:
         "indicator": (_raw_word, INDICATOR_STYLES, "unknown indicator: {raw!r}; pick one of " + "|".join(INDICATOR_STYLES),
                       lambda w: _write_config_key("display.tui_status_indicator", w)),
         # Which engine the desktop voice button mounts; applies to the NEXT conversation.
-        "voice.voice_chat_mode": (_word, {"chained", "gpt-live"}, "unknown voice chat mode: {value}; pick chained|gpt-live",
-                                  lambda w: _write_config_key("voice.voice_chat_mode", w))}
+        # Plugins add engines (``ctx.register_voice_live_engine``), so the accepted set is live.
+        "voice.voice_chat_mode": (_word, _VoiceChatModes(), "unknown voice chat mode: {value}; pick chained|gpt-live"
+                                  " or an installed voice engine", lambda w: _write_config_key("voice.voice_chat_mode", w))}
+
+
+class _VoiceChatModes:
+    """Membership-only view of :func:`tools.voice_live.known_voice_chat_modes`, resolved on the
+    ``in`` check so building the setter table never runs plugin discovery."""
+
+    def __contains__(self, word) -> bool:
+        from tools.voice_live import known_voice_chat_modes
+        return word in known_voice_chat_modes()
 
 
 def _set_word(rid, params, key, value, session):

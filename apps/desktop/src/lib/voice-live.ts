@@ -19,7 +19,16 @@ import { hermesApi } from '@/hermes'
  * https://developers.openai.com/api/docs/guides/live-delegation
  */
 
-export type VoiceChatMode = 'chained' | 'gpt-live'
+/** `chained`, `gpt-live`, or a plugin engine's name (`ctx.register_voice_live_engine`). */
+export type VoiceChatMode = string
+
+/** One live engine the gateway can serve, with its own readiness. */
+export interface VoiceLiveEngineStatus {
+  name: string
+  label: string
+  available: boolean
+  reason: null | string
+}
 
 export interface VoiceLiveStatus {
   mode: VoiceChatMode
@@ -27,6 +36,8 @@ export interface VoiceLiveStatus {
   reason: null | string
   model: string
   voice: string
+  /** Every live engine installed on the gateway, built-in first. */
+  engines: VoiceLiveEngineStatus[]
 }
 
 export interface LiveHistoryMessage {
@@ -89,9 +100,30 @@ export async function fetchVoiceLiveStatus(): Promise<null | VoiceLiveStatus> {
       return null
     }
 
+    const mode =
+      typeof response.mode === 'string' && response.mode.trim() ? response.mode.trim().toLowerCase() : 'chained'
+
+    // A gateway predating plugin engines sends no list: its only live engine is GPT-Live.
+    const engines = Array.isArray(response.engines)
+      ? response.engines.filter(e => typeof e?.name === 'string' && e.name.trim())
+      : [
+          {
+            available: Boolean(response.available),
+            label: 'GPT-Live',
+            name: 'gpt-live',
+            reason: response.reason ?? null
+          }
+        ]
+
     return {
       available: Boolean(response.available),
-      mode: response.mode === 'gpt-live' ? 'gpt-live' : 'chained',
+      engines: engines.map(e => ({
+        available: Boolean(e.available),
+        label: e.label || e.name,
+        name: e.name.trim().toLowerCase(),
+        reason: e.reason ?? null
+      })),
+      mode,
       model: response.model,
       reason: response.reason ?? null,
       voice: response.voice
@@ -211,6 +243,7 @@ async function waitForIceGathering(connection: RTCPeerConnection): Promise<void>
   })
 }
 
+/** The built-in GPT-Live transport (`VoiceLiveTransport` in `./voice-live-engines`). */
 export class VoiceLiveSession {
   readonly audio: HTMLAudioElement
   /** Whose (connection, profile) this session dials; null → the active scope.

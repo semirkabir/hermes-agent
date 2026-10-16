@@ -235,9 +235,11 @@ class TTSSpeakRequest(BaseModel):
     text: str
 
 class VoiceLiveSessionRequest(BaseModel):
-    """POST /api/audio/voice-live/session: the renderer's WebRTC SDP offer plus optional prior
-    text turns (``{"type":"message","role":..,"content":[..]}``) to seed the live voice model."""
-    sdp: str
+    """POST /api/audio/voice-live/session: the renderer's WebRTC SDP offer (GPT-Live) or an
+    engine-specific body for a plugin engine, plus optional prior text turns
+    (``{"type":"message","role":..,"content":[..]}``) to seed the live voice model."""
+    sdp: Optional[str] = None
+    engine_request: Optional[dict[str, Any]] = None
     history: Optional[list[dict[str, Any]]] = None
 
 class TTSLeaseRequest(BaseModel):

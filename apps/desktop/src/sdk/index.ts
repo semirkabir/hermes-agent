@@ -121,8 +121,8 @@ import {
 import { sessionsHost } from './sessions'
 import { desktopSettings } from './settings'
 
-/** Pane, status bar and titlebar slots; see `./areas` for the mount rules. */
-export { PANES_AREA, STATUSBAR_AREAS, TITLEBAR_AREAS } from './areas'
+/** Pane, status bar, titlebar and live-voice-engine slots; see `./areas` for the mount rules. */
+export * from './areas'
 /** The plugin authoring contract (`HermesPlugin`, `PluginContext`, `ctx.*` door types). */
 export type * from './plugin-contract'
 

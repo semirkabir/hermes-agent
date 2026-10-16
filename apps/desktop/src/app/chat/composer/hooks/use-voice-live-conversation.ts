@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
-import { type LiveHistoryMessage, type LiveTranscriptFragment, VoiceLiveSession } from '@/lib/voice-live'
+import type { LiveHistoryMessage, LiveTranscriptFragment } from '@/lib/voice-live'
+import { resolveLiveTransport, type VoiceLiveTransport } from '@/lib/voice-live-engines'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
 import { notify, notifyError } from '@/store/notifications'
 
@@ -25,6 +26,8 @@ interface PendingVoiceResponse {
 
 interface VoiceLiveConversationOptions {
   busy: boolean
+  /** The `voice.voice_chat_mode` engine to dial, latched at conversation start (default GPT-Live). */
+  engine?: string
   enabled: boolean
   onFatalError?: () => void
   /** Interrupt the in-flight Hermes turn (Stop-button seam). Fired when a new
@@ -94,7 +97,7 @@ export function liveEndedMessage(
 }
 
 /**
- * GPT-Live conversation engine — same public shape as `useVoiceConversation`
+ * Live conversation engine (GPT-Live or a plugin engine) — same public shape as `useVoiceConversation`
  * so the composer can mount either from `voice.voice_chat_mode`.
  *
  * Status mapping: `listening` = session up, voice idle; `speaking` = the
@@ -103,6 +106,7 @@ export function liveEndedMessage(
  */
 export function useVoiceLiveConversation({
   busy,
+  engine = 'gpt-live',
   enabled,
   onFatalError,
   onInterrupt,
@@ -122,7 +126,7 @@ export function useVoiceLiveConversation({
   // Mirrors delegationRef for the reply-drive effect: a new delegation must
   // restart the feed loop, and a ref write alone does not re-render.
   const [activeDelegation, setActiveDelegation] = useState<null | string>(null)
-  const sessionRef = useRef<null | VoiceLiveSession>(null)
+  const sessionRef = useRef<null | VoiceLiveTransport>(null)
   // The scope's session owner (a Bot's own connection + profile) picks the
   // GPT-Live backend and voice; a ref keeps the long-lived start closures
   // reading the current value.
@@ -150,6 +154,7 @@ export function useVoiceLiveConversation({
   const wasEnabledRef = useRef(enabled)
 
   const latest = useRef({
+    engine,
     activeToolLabel,
     beforeMicOpen,
     onFatalError,
@@ -162,6 +167,7 @@ export function useVoiceLiveConversation({
   })
 
   latest.current = {
+    engine,
     activeToolLabel,
     beforeMicOpen,
     onFatalError,
@@ -246,7 +252,18 @@ export function useVoiceLiveConversation({
       return
     }
 
-    const session = new VoiceLiveSession(
+    const createTransport = resolveLiveTransport(latest.current.engine)
+
+    if (!createTransport) {
+      startingRef.current = false
+      notify({ kind: 'warning', message: voiceCopy.liveUnavailable(`no desktop half for ${latest.current.engine}`) })
+      setStatus('idle')
+      latest.current.onFatalError?.()
+
+      return
+    }
+
+    const session: VoiceLiveTransport = createTransport(
       {
         // The voice model answers a bare "stop" itself (it just goes quiet) and
         // never delegates it, so the spoken stop phrase is judged on the user
