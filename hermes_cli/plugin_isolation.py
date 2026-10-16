@@ -73,6 +73,7 @@ HOST_OBJECT_BASES: dict[str, str] = {
     "register_tts_provider": "agent.tts_provider:TTSProvider",
     "register_transcription_provider": "agent.transcription_provider:TranscriptionProvider",
     "register_delegation_provider": "agent.delegation_provider:DelegationProvider",
+    "register_voice_live_engine": "agent.voice_live_engine:VoiceLiveEngine",
     "register_context_engine": "agent.context_engine:ContextEngine",
     "register_context_reference": "agent.context_references:ContextReferenceProvider",
     "register_memory_provider": "agent.memory_provider:MemoryProvider",

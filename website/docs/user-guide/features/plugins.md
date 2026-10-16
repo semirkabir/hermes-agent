@@ -120,6 +120,7 @@ Every `ctx.*` API below is available inside a plugin's `register(ctx)` function.
 | Register a gateway platform (Discord, Telegram, IRC, …) | `ctx.register_platform(name, label, adapter_factory, check_fn, ...)` — see [Adding Platform Adapters](../../developer-guide/adding-platform-adapters.md) |
 | Register an image-generation backend | `ctx.register_image_gen_provider(provider)` — see [Image Generation Provider Plugins](../../developer-guide/image-gen-provider-plugin.md) |
 | Register a delegation strategy (how each `delegate_task` subagent is routed) | `ctx.register_delegation_provider(provider)` — see [Delegation Provider Plugins](../../developer-guide/delegation-provider-plugin.md) |
+| Add a live (full-duplex) voice engine to the desktop voice picker | `ctx.register_voice_live_engine(engine)` (a `VoiceLiveEngine` from `agent.voice_live_engine`) plus a desktop `voice.liveEngines` contribution under the same name; selected by `voice.voice_chat_mode` |
 | Register a video-generation backend | `ctx.register_video_gen_provider(provider)` — see [Video Generation Provider Plugins](../../developer-guide/video-gen-provider-plugin.md) |
 | Register a context-compression engine | `ctx.register_context_engine(engine)` — see [Context Engine Plugins](../../developer-guide/context-engine-plugin.md) |
 | Register a terminal execution backend (cloud sandbox) | `ctx.register_terminal_environment_provider(provider)` — see [Terminal Environment Plugins](../../developer-guide/terminal-environment-plugin.md) |

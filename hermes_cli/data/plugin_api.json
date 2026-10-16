@@ -128,6 +128,7 @@
         "agent.plugin_llm",
         "agent.transcription_provider",
         "agent.tts_provider",
+        "agent.voice_live_engine",
         "cron.execution_identity",
         "hermes_cli.dashboard_auth",
         "hermes_cli.platform_actions",

@@ -13,7 +13,8 @@ import { $voiceLiveStatus, selectedVoiceChatMode, setVoiceChatMode } from '@/sto
 
 /**
  * Which engine the next voice conversation mounts: the chained
- * speech-to-text → Hermes → speech loop, or GPT-Live delegating to Hermes.
+ * speech-to-text → Hermes → speech loop, or a live engine delegating to Hermes
+ * (GPT-Live built in, plus any engine a plugin installs on the gateway).
  *
  * Radio rows, not a toggle: the user is choosing between two named things and
  * the checked row tells them which one the next press starts. Rendered inside
@@ -31,14 +32,14 @@ export function VoiceEngineRows({ disabled }: { disabled: boolean }) {
     return null
   }
 
-  const liveAvailable = status.available
+  const known = new Set(['chained', ...status.engines.map(engine => engine.name)])
 
   return (
     <>
       <DropdownMenuLabel>{c.voiceEngine}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
         onValueChange={value => {
-          if (value !== 'chained' && value !== 'gpt-live') {
+          if (!known.has(value)) {
             return
           }
 
@@ -50,16 +51,23 @@ export function VoiceEngineRows({ disabled }: { disabled: boolean }) {
         <DropdownMenuRadioItem className={dropdownMenuRow} disabled={disabled} value="chained">
           {c.voiceEngineChained}
         </DropdownMenuRadioItem>
-        <DropdownMenuRadioItem className={dropdownMenuRow} disabled={disabled || !liveAvailable} value="gpt-live">
-          <span className="flex min-w-0 flex-col">
-            <span>{c.voiceEngineLive}</span>
-            {liveAvailable ? null : (
-              <span className="text-muted-foreground truncate text-xs">
-                {status.reason ?? c.voiceEngineLiveNeedsKey}
-              </span>
-            )}
-          </span>
-        </DropdownMenuRadioItem>
+        {status.engines.map(engine => (
+          <DropdownMenuRadioItem
+            className={dropdownMenuRow}
+            disabled={disabled || !engine.available}
+            key={engine.name}
+            value={engine.name}
+          >
+            <span className="flex min-w-0 flex-col">
+              <span>{engine.name === 'gpt-live' ? c.voiceEngineLive : engine.label}</span>
+              {engine.available ? null : (
+                <span className="text-muted-foreground truncate text-xs">
+                  {engine.reason ?? (engine.name === 'gpt-live' ? c.voiceEngineLiveNeedsKey : null)}
+                </span>
+              )}
+            </span>
+          </DropdownMenuRadioItem>
+        ))}
       </DropdownMenuRadioGroup>
     </>
   )
@@ -74,7 +82,13 @@ export function useVoiceEngineName(): null | string {
     return null
   }
 
-  return selectedVoiceChatMode(status) === 'gpt-live'
+  const mode = selectedVoiceChatMode(status)
+
+  if (mode === 'chained') {
+    return t.composer.voiceEngineChainedShort
+  }
+
+  return mode === 'gpt-live'
     ? t.composer.voiceEngineLiveShort
-    : t.composer.voiceEngineChainedShort
+    : (status.engines.find(engine => engine.name === mode)?.label ?? mode)
 }

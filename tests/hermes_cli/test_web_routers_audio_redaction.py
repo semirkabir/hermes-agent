@@ -70,7 +70,7 @@ def test_speak_exception_is_redacted(client, monkeypatch):
 
 
 def test_voice_live_session_vendor_error_is_redacted(client, monkeypatch):
-    monkeypatch.setattr("tools.voice_live.create_webrtc_session", _raise)
+    monkeypatch.setattr("tools.voice_live.create_live_session", _raise)
     resp = client.post("/api/audio/voice-live/session", json={"sdp": "v=0\r\n"})
     assert resp.status_code == 502
     _assert_redacted(resp.json()["detail"])

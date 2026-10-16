@@ -90,6 +90,12 @@ _SCOPED_PROVIDER_REGISTRARS: tuple[tuple[str, str, str, str, str, str, dict[str,
      "``delegation.backend``. It decides each ``delegate_task`` task's route (model/provider or a Hermes "
      "profile) and may add per-task schema parameters; core keeps the subagent lifecycle.",
      {"normalize": "lower"}),
+    ("register_voice_live_engine", "voice_live_engine", "agent.voice_live_registry",
+     "agent.voice_live_engine:VoiceLiveEngine", "voice live engine",
+     "Register an :class:`agent.voice_live_engine.VoiceLiveEngine` (gateway half of a full-duplex "
+     "voice engine that delegates to Hermes); ``engine.name`` is matched by ``voice.voice_chat_mode`` "
+     "unless it is a built-in mode (``chained``, ``gpt-live``; rejected with a warning).",
+     {"normalize": "lower"}),
 )
 
 _NAME_NORMALIZERS: dict[Optional[str], Optional[Callable[[str], str]]] = {

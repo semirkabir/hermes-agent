@@ -39,3 +39,12 @@ export {
   type ToolMediaRendererContribution,
   type ToolMediaRendererProps
 } from '@/lib/tool-media-renderers'
+
+/** Live voice engines: a plugin's renderer half for `voice.voice_chat_mode` (see `@/lib/voice-live-engines`). */
+export {
+  requestLiveEngineSession,
+  VOICE_LIVE_ENGINES_AREA,
+  type VoiceLiveEngineContribution,
+  type VoiceLiveTransport,
+  type VoiceLiveTransportFactory
+} from '@/lib/voice-live-engines'

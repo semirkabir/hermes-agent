@@ -886,6 +886,10 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
     def register_delegation_provider(self, provider):
         return register_scoped_provider(self, "register_delegation_provider", provider)
 
+    @scoped_provider_registrar
+    def register_voice_live_engine(self, provider):
+        return register_scoped_provider(self, "register_voice_live_engine", provider)
+
 
 # Every mutating entry point plugins reach through ``ctx`` during register(), mixins included.
 ignore_registrars_after_abandoned_load(PluginContext)
