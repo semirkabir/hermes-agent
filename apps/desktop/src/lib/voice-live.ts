@@ -79,6 +79,8 @@ export interface VoiceLiveHandlers {
   onTranscript?: (fragment: LiveTranscriptFragment) => void
   /** Assistant audio output level hint: the remote track is speaking. */
   onSpeakingChange?: (speaking: boolean) => void
+  /** Microphone level, 0..1, for the conversation meter while the user talks. */
+  onInputLevel?: (level: number) => void
 }
 
 const CLOSE_TIMEOUT_MS = 15_000
@@ -336,6 +338,8 @@ export class VoiceLiveSession {
       connection.addTrack(track, this.microphone)
     }
 
+    this.armInputProbe(this.microphone)
+
     // Register the data channel before the offer so its m-line is negotiated.
     const events = connection.createDataChannel('oai-events')
     this.events = events
@@ -375,6 +379,36 @@ export class VoiceLiveSession {
     this.sessionId = response.session?.id ?? null
     await connection.setRemoteDescription({ sdp: response.transport.sdp, type: 'answer' })
   }
+
+  private inputProbe: null | number = null
+
+  /** Mic level for the conversation meter (same analyser approach as the speaking probe). */
+  private armInputProbe(stream: MediaStream): void {
+    try {
+      const context = new AudioContext()
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 512
+      context.createMediaStreamSource(stream).connect(analyser)
+      const buffer = new Uint8Array(analyser.frequencyBinCount)
+
+      this.inputProbe = window.setInterval(() => {
+        analyser.getByteTimeDomainData(buffer)
+        let peak = 0
+
+        for (const sample of buffer) {
+          peak = Math.max(peak, Math.abs(sample - 128))
+        }
+
+        this.handlers.onInputLevel?.(Math.min(1, (peak / 128) * 2.5))
+      }, 80)
+      const stop = () => void context.close().catch(() => undefined)
+      this.closeInputProbe = stop
+    } catch {
+      // No analyser: the meter just stays still.
+    }
+  }
+
+  private closeInputProbe: (() => void) | null = null
 
   private armSpeakingProbe(stream: MediaStream): void {
     try {
@@ -562,6 +596,13 @@ export class VoiceLiveSession {
       window.clearInterval(this.speakingProbe)
       this.speakingProbe = null
     }
+
+    if (this.inputProbe) {
+      window.clearInterval(this.inputProbe)
+      this.inputProbe = null
+    }
+
+    this.closeInputProbe?.()
 
     this.analyser?.disconnect()
     void this.audioContext?.close().catch(() => undefined)
