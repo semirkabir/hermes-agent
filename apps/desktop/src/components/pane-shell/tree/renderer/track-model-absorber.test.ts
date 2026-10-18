@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { allFixedAbsorberIndex } from './track-model'
+import { group } from '../model'
+import { allFixedAbsorberIndex, subtreeGone } from './track-model'
 
 describe('allFixedAbsorberIndex', () => {
   it('picks the last uncapped track', () => {
@@ -31,5 +32,26 @@ describe('allFixedAbsorberIndex', () => {
   it('refuses a lone capped sidebar', () => {
     // ⌘G alone: only review is visible in the rail — must stay at 237px / max 20rem.
     expect(allFixedAbsorberIndex([0], () => '20rem')).toBe(-1)
+  })
+})
+
+describe('subtreeGone main floor', () => {
+  const main = { id: 'x', area: 'panes', data: { placement: 'main' } } as never
+  const ctx = (gone: string[]) => ({ paneFor: () => main, paneGone: (id: string) => gone.includes(id), overrides: {} })
+
+  it('keeps a zone whose hidden panes include the real main surface', () => {
+    expect(subtreeGone(group(['session-tile:a']), ctx(['session-tile:a']))).toBe(false)
+  })
+
+  it('collapses a zone holding only hidden browser tiles (folded browser panel)', () => {
+    const ids = ['preview-tile:url:browser-1', 'preview-tile:url:browser-2']
+
+    expect(subtreeGone(group(ids), ctx(ids))).toBe(true)
+  })
+
+  it('keeps a browser zone while any tile in it is still shown', () => {
+    const ids = ['preview-tile:url:browser-1', 'preview-tile:url:browser-2']
+
+    expect(subtreeGone(group(ids), ctx([ids[0]]))).toBe(false)
   })
 })

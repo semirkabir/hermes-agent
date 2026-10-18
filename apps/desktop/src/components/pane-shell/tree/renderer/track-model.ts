@@ -333,8 +333,16 @@ export function subtreeGone(node: LayoutNode, ctx: TrackContext): boolean {
     return false
   }
 
-  return !ids.some(id => paneChrome(ctx.paneFor(id)).placement === 'main')
+  return !ids.some(id => paneChrome(ctx.paneFor(id)).placement === 'main' && !id.startsWith(PREVIEW_TILE_FLOOR_EXEMPT))
 }
+
+/** Preview tiles (the Browser, file previews) dock as `placement: 'main'`
+ *  surfaces, but they are never the app: a zone holding only hidden preview
+ *  tiles (the browser panel folded by its toggle) must collapse and hand its
+ *  space back, not sit there as an empty HERMES placeholder. Literal rather
+ *  than imported so this renderer stays independent of the preview store;
+ *  must match PREVIEW_TILE_PREFIX in store/preview-explicit.ts. */
+const PREVIEW_TILE_FLOOR_EXEMPT = 'preview-tile:'
 
 /**
  * Which chrome toggle owns a root-row child — SEMANTIC, not positional:
