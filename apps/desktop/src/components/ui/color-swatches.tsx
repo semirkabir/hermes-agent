@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { Codicon } from './codicon'
 
 interface ColorSwatchesProps {
@@ -7,6 +9,8 @@ interface ColorSwatchesProps {
   clearLabel: string
   clearIcon?: string
   swatchLabel?: (color: string) => string
+  /** Optional control beside the clear row (e.g. a custom-color "+"). */
+  trailing?: ReactNode
 }
 
 // Shared swatch grid + clear row used by the profile rail and the project
@@ -17,7 +21,8 @@ export function ColorSwatches({
   onChange,
   clearLabel,
   clearIcon = 'circle-slash',
-  swatchLabel
+  swatchLabel,
+  trailing
 }: ColorSwatchesProps) {
   return (
     <div>
@@ -37,14 +42,17 @@ export function ColorSwatches({
           />
         ))}
       </div>
-      <button
-        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-1 text-xs text-(--ui-text-tertiary) transition hover:bg-(--ui-control-hover-background) hover:text-foreground"
-        onClick={() => onChange(null)}
-        type="button"
-      >
-        <Codicon name={clearIcon} size="0.75rem" />
-        {clearLabel}
-      </button>
+      <div className="mt-2 flex items-center gap-1.5">
+        <button
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-xs text-(--ui-text-tertiary) transition hover:bg-(--ui-control-hover-background) hover:text-foreground"
+          onClick={() => onChange(null)}
+          type="button"
+        >
+          <Codicon name={clearIcon} size="0.75rem" />
+          {clearLabel}
+        </button>
+        {trailing}
+      </div>
     </div>
   )
 }

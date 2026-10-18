@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { hexToHsv, hsvToHex } from '@/components/ui/color-wheel'
 import { isIconifyName, searchIconify } from '@/lib/iconify'
 
 import { ProjectAppearancePicker } from './project-appearance'
@@ -10,6 +11,10 @@ vi.mock('@/i18n', () => ({
     t: {
       sidebar: {
         projects: {
+          colorBrightness: 'Brightness',
+          colorCustom: 'Custom color',
+          colorHex: 'Hex color',
+          colorHue: 'Hue and saturation',
           iconSearch: 'More icons',
           iconSearchEmpty: 'No icons found',
           iconSearchError: "Couldn't reach Iconify",
@@ -136,5 +141,61 @@ describe('ProjectAppearancePicker iconify search', () => {
     })
 
     expect(screen.getByText("Couldn't reach Iconify")).toBeTruthy()
+  })
+})
+
+describe('custom color wheel', () => {
+  it('round-trips hex and parses the hsl() preset swatches', () => {
+    for (const hex of ['#3b82f6', '#ff0000', '#000000', '#ffffff', '#12ab9c']) {
+      expect(hsvToHex(hexToHsv(hex)!)).toBe(hex)
+    }
+
+    expect(hsvToHex(hexToHsv('hsl(0 100% 50%)')!)).toBe('#ff0000')
+    expect(hexToHsv('nope')).toBeNull()
+  })
+
+  it('opens from the + swatch and persists a typed hex once, debounced', async () => {
+    vi.useFakeTimers()
+    const onColor = vi.fn()
+
+    render(
+      <ProjectAppearancePicker color={null} icon={null} noColorLabel="No color" onColor={onColor} onIcon={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Custom color' }))
+    expect(screen.getByTestId('color-wheel')).toBeTruthy()
+
+    const hex = screen.getByRole('textbox', { name: 'Hex color' })
+
+    fireEvent.change(hex, { target: { value: '#12ab9c' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Brightness' }), { target: { value: '50' } })
+    expect(onColor).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250)
+    })
+
+    expect(onColor).toHaveBeenCalledTimes(1)
+    expect(onColor.mock.calls[0][0]).toMatch(/^#[0-9a-f]{6}$/)
+    expect(hexToHsv(onColor.mock.calls[0][0])!.v).toBeCloseTo(0.5, 1)
+  })
+
+  it('a preset swatch click persists immediately and cancels a pending drag', async () => {
+    vi.useFakeTimers()
+    const onColor = vi.fn()
+
+    render(
+      <ProjectAppearancePicker color={null} icon={null} noColorLabel="No color" onColor={onColor} onIcon={vi.fn()} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Custom color' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hex color' }), { target: { value: '#12ab9c' } })
+    fireEvent.click(screen.getByRole('button', { name: 'No color' }))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(onColor.mock.calls).toEqual([[null]])
   })
 })
