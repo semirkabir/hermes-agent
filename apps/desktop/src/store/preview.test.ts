@@ -517,7 +517,7 @@ describe('preview session scoping (#73890)', () => {
 
   it('keeps a draft tabs in the draft until that draft itself gets its stored id', () => {
     openPreview(fileTarget('/work/draft.html'))
-    newBrowserTab()
+    openPreview(urlTarget('about:blank'))
     expect($previewTabs.get().map(tab => tab.sessionId)).toEqual([undefined, undefined])
 
     // Focus moving elsewhere — an existing session clicked in the sidebar, or
@@ -724,12 +724,17 @@ describe('preview session scoping (#73890)', () => {
     newBrowserTab()
     const id = $previewTabs.get()[0]!.id
 
-    expect($previewTabs.get()[0]?.sessionId).toBe('sess-x')
+    expect($previewTabs.get()[0]).toMatchObject({ pinned: true, sessionId: 'sess-x' })
     expect($visiblePreviewTabs.get().map(tab => tab.id)).toEqual([id])
 
+    // Pinned: it follows you to another session without being re-owned.
     $selectedStoredSessionId.set('sess-y')
-    expect($visiblePreviewTabs.get()).toHaveLength(0)
+    expect($visiblePreviewTabs.get().map(tab => tab.id)).toEqual([id])
     expect($previewTabs.get()[0]?.sessionId).toBe('sess-x')
+
+    // Unpinned, it goes back to being sess-x's alone.
+    setPreviewTabPinned(id, false)
+    expect($visiblePreviewTabs.get()).toHaveLength(0)
   })
 
   it('never navigates another session Browser for a URL open', () => {
@@ -881,6 +886,7 @@ describe('preview session scoping (#73890)', () => {
     $selectedStoredSessionId.set('sess-a')
     openPreview(urlTarget('https://a.example'))
     newBrowserTab()
+    setPreviewTabPinned($previewTabs.get()[1]!.id, false)
     openPreview(urlTarget('https://a2.example'))
     $selectedStoredSessionId.set('sess-b')
     openPreview(urlTarget('https://b.example'))

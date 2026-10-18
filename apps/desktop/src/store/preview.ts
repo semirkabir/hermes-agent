@@ -1046,7 +1046,26 @@ export function openBrowserTab() {
   const current = tabs.find(tab => tab.id === browserTabId(tabs))
 
   recordFeatureUse('browser_pane')
-  openPreview(current?.target ?? blankPage())
+
+  if (current) {
+    openPreview(current.target)
+
+    return
+  }
+
+  // A Browser the user summons opens PINNED: it is their browser, not one
+  // chat's preview, so switching sessions must not park it with the session
+  // that happened to be focused. Agent/chat URL opens stay session-scoped, and
+  // a re-front keeps whatever pin state the tab has (an explicit unpin sticks).
+  const before = new Set($previewTabs.get().map(tab => tab.id))
+
+  openPreview(blankPage())
+
+  const created = $previewTabs.get().find(tab => !before.has(tab.id) && isBrowserTab(tab))
+
+  if (created) {
+    setPreviewTabPinned(created.id, true)
+  }
 }
 
 /** ⌘⇧L is a TOGGLE: show the Browser when it's away, fold it away when it's
@@ -1067,14 +1086,15 @@ export function toggleBrowserTab() {
   openBrowserTab()
 }
 
-/** Another Browser, always — the strip's "+". */
+/** Another Browser, always — the strip's "+". Pinned, like the one
+ *  openBrowserTab summons: a user-opened Browser follows you across sessions. */
 export function newBrowserTab() {
   const id = mintBrowserTabId()
 
   recordFeatureUse('browser_pane')
   $previewTabs.set([
     ...$previewTabs.get(),
-    { id, pinned: false, sessionId: currentSessionId($focusedStoredSessionId.get()) ?? undefined, target: blankPage() }
+    { id, pinned: true, sessionId: currentSessionId($focusedStoredSessionId.get()) ?? undefined, target: blankPage() }
   ])
   noteExplicitPreviewOpen(id)
   selectRightRailTab(id)

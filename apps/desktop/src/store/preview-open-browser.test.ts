@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { $previewTabs, closeRightRail, openBrowserTab, openPreview } from './preview'
+import { $previewTabs, closeRightRail, newBrowserTab, openBrowserTab, openPreview, setPreviewTabPinned } from './preview'
 
 beforeEach(() => {
   closeRightRail()
@@ -47,5 +47,35 @@ describe('openBrowserTab', () => {
 
     expect(tabs).toHaveLength(2)
     expect(tabs.map(tab => tab.target.url)).toContain('file:///work/notes.md')
+  })
+
+  // The Browser you summon is yours, not one chat's: it opens pinned so
+  // switching sessions does not park it with the session that opened it.
+  it('opens a new browser tab pinned', () => {
+    openBrowserTab()
+
+    expect($previewTabs.get()[0]?.pinned).toBe(true)
+  })
+
+  it('opens the strip "+" browser pinned', () => {
+    newBrowserTab()
+
+    expect($previewTabs.get()[0]?.pinned).toBe(true)
+  })
+
+  it('leaves agent/chat URL opens session-scoped', () => {
+    openPreview({ kind: 'url', label: 'Example', source: 'https://example.com', url: 'https://example.com' })
+
+    expect($previewTabs.get()[0]?.pinned).toBe(false)
+  })
+
+  it('respects an explicit unpin when the browser is re-fronted', () => {
+    openBrowserTab()
+    const id = $previewTabs.get()[0]!.id
+    setPreviewTabPinned(id, false)
+    openBrowserTab()
+
+    expect($previewTabs.get()).toHaveLength(1)
+    expect($previewTabs.get()[0]?.pinned).toBe(false)
   })
 })
