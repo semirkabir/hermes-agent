@@ -358,6 +358,12 @@ export function useVoiceLiveConversation({
           speakingRef.current = speaking
           setLevel(speaking ? 0.6 : 0)
           refreshStatus()
+        },
+        // The meter follows the user's mic while the voice is quiet; output drives it otherwise.
+        onInputLevel: inputLevel => {
+          if (sessionRef.current === session && !speakingRef.current) {
+            setLevel(Math.max(0, Math.min(1, inputLevel)))
+          }
         }
       },
       ownerRef.current
