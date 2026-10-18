@@ -460,7 +460,7 @@ function ConfigSettingsInner({
   }
 
   const visibleFields = (
-    activeSectionId === 'voice' ? fields.filter(([key]) => voiceFieldVisible(key, config)) : fields
+    activeSectionId === 'voice' ? fields.filter(([key, field]) => voiceFieldVisible(key, config, field)) : fields
   ).filter(([key]) => key !== DELEGATION_ROUTE_COMPANION_KEY)
 
   const showEmptyState =
@@ -574,7 +574,7 @@ function ConfigSettingsInner({
                       : enumOptionsFor(key, getNested(config, key), config)
                   }
                   onChange={value => updateConfig(setConfigField(config, key, value))}
-                  optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : undefined}
+                  optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : field.labels}
                   schema={field}
                   schemaKey={key}
                   value={configFieldValue(config, key)}

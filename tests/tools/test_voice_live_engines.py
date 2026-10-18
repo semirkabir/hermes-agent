@@ -162,3 +162,29 @@ def test_engine_without_a_session_step_refuses_cleanly():
     assert SocketOwned().config_key == "socket_live"
     with pytest.raises(VoiceLiveBadRequest):
         SocketOwned().create_session({}, {})
+
+
+def test_settings_schema_lists_every_mode_and_tags_engine_fields(home):
+    _install_plugin(home, "grok-voice", _ENGINE_SRC.replace(
+        "    def status(self, section):",
+        "    def settings_schema(self):\n        return {'voice': {'type': 'select', 'options': ['rex', 'ara']}}\n\n    def status(self, section):"),
+        {"voice_chat_mode": "chained"})
+    _load_plugins()
+
+    fields = voice_live.voice_settings_schema()
+
+    mode = fields["voice.voice_chat_mode"]
+    assert mode["type"] == "select" and mode["options"][:2] == ["chained", "gpt-live"]
+    assert "grok-live" in mode["options"] and mode["labels"]["grok-live"] == "Grok Voice"
+    assert fields["voice.grok_live.voice"] == {"type": "select", "options": ["rex", "ara"],
+                                               "category": "voice", "engine": "grok-live"}
+    assert fields["voice.gpt_live.voice"]["engine"] == "gpt-live"
+
+
+def test_config_schema_route_carries_engine_fields(home):
+    from hermes_cli.web_server_config import _schema_with_dynamic_provider_options
+
+    schema = _schema_with_dynamic_provider_options()
+
+    assert schema["voice.voice_chat_mode"]["type"] == "select"
+    assert schema["voice.gpt_live.instructions"]["engine"] == "gpt-live"

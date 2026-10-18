@@ -15,6 +15,11 @@ export interface ConfigFieldSchema {
    *  value to ''. Matches the existing <Select> EMPTY_SELECT_VALUE pattern. */
   clearable?: boolean
   type?: 'boolean' | 'list' | 'number' | 'select' | 'string' | 'text'
+  /** Live voice engine owning this field (`voice.<engine>.*`); shown only while it is the
+   *  selected `voice.voice_chat_mode`. */
+  engine?: string
+  /** Display labels for select options (option value → label). */
+  labels?: Record<string, string>
 }
 
 export interface ConfigSchemaResponse {

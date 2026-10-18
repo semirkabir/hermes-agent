@@ -70,7 +70,7 @@ export interface LiveTranscriptFragment {
 export interface VoiceLiveHandlers {
   /** GPT-Live asked the backend (Hermes) for help. `context` is the recent
    *  transcript window, newest last — the delegation itself carries no text. */
-  onDelegation: (delegationId: string, context: LiveTranscriptFragment[]) => void
+  onDelegation: (delegationId: string, context: LiveTranscriptFragment[], request?: string) => void
   /** Vendor-side error. `fatal` when the session is gone. */
   onError: (message: string, fatal: boolean) => void
   /** `session.closed` arrived (or the transport dropped without it). */

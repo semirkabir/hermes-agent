@@ -229,7 +229,7 @@ The chained loop above is one of two voice chat modes in the desktop app. The ot
 
 ```yaml
 voice:
-  voice_chat_mode: gpt-live     # chained (default) | gpt-live
+  voice_chat_mode: gpt-live     # chained (default) | gpt-live | an installed plugin engine
   gpt_live:
     voice: marin                # marin, cedar, quartz, ripple, vesper, willow, stone, gleam, meridian, …
     instructions: ""            # optional extra persona sentences (tone, pace, language)
@@ -238,6 +238,8 @@ voice:
 Requirements: an OpenAI API key (`OPENAI_API_KEY`, `VOICE_TOOLS_OPENAI_KEY`, or `voice.gpt_live.api_key`). The voice layer is billed by OpenAI at **$0.05 per minute of session time** (idle time counts); the Hermes turn is billed on its own provider as always. The mode is also in Settings → Voice → *Voice Chat Mode*.
 
 How it works: pressing the voice button opens a WebRTC session from the desktop to GPT-Live; the desktop only ever receives a session id and an SDP answer — the key stays on the gateway host, which performs the session creation (`POST /api/audio/voice-live/session`). Each `session.delegation.created` becomes a normal turn on the open chat (the bubble shows what you said; the recent spoken exchange rides the model input as a per-turn note, never the system prompt, so the reply is speakable prose). Tool activity is fed to the voice as quiet context ("Hermes is working: terminal") so it can tell you what is happening if you ask; the final answer is streamed back sentence by sentence. Saying the stop phrase ends the conversation. If `gpt-live` is selected but no key resolves, the button falls back to the chained mode with a notice.
+
+**Plugin voice engines.** Other full-duplex models (Gemini Live, xAI Grok voice, a self-hosted realtime endpoint) arrive as plugins and show up in the same voice engine menu next to GPT-Live. A plugin registers the gateway half with `ctx.register_voice_live_engine()` (readiness, plus the server-side session step so its key stays on the gateway host) and the desktop half as a `voice.liveEngines` contribution under the same name; `voice.voice_chat_mode` then accepts that name. Its settings live under `voice.<engine>` (for example `voice.grok_live`) and appear in Settings → Voice only while that engine is selected. Delegation works the same way as with GPT-Live. If the selected engine is not installed on the gateway, or its desktop half is missing, the button falls back to the chained mode with a notice.
 
 Not supported in this mode: the Nous-managed audio proxy (direct key only), the CLI/TUI (`/voice` keeps the chained loop), and the `tts` tool (it keeps using `tts.provider`).
 

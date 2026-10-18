@@ -50,7 +50,10 @@ interface VoiceLiveConversationOptions {
 /** Turn transcript fragments into the Hermes turn: `prompt` is what the user
  *  last said (the persisted user row), `context` the recent spoken exchange
  *  that rides the model input only (see tools/voice_live.py). */
-export function delegationPrompt(context: LiveTranscriptFragment[]): { context: string; prompt: string } {
+export function delegationPrompt(
+  context: LiveTranscriptFragment[],
+  request?: string
+): { context: string; prompt: string } {
   const turns: Array<{ speaker: 'assistant' | 'user'; text: string }> = []
 
   for (const fragment of context) {
@@ -71,7 +74,10 @@ export function delegationPrompt(context: LiveTranscriptFragment[]): { context: 
     .filter(line => !line.endsWith(': '))
     .join('\n')
 
-  return { context: transcript, prompt: prompt || transcript.slice(-400) }
+  // A function-call engine names the request itself; that beats our guess from the transcript.
+  const requested = (request ?? '').replace(/\s+/g, ' ').trim()
+
+  return { context: transcript, prompt: requested || prompt || transcript.slice(-400) }
 }
 
 /**
@@ -316,12 +322,12 @@ export function useVoiceLiveConversation({
             latest.current.onFatalError?.()
           }
         },
-        onDelegation: (delegationId, context) => {
+        onDelegation: (delegationId, context, request) => {
           if (sessionRef.current !== session) {
             return
           }
 
-          const { context: voiceContext, prompt } = delegationPrompt(context)
+          const { context: voiceContext, prompt } = delegationPrompt(context, request)
 
           // A spoken stop command ends the conversation instead of becoming a turn.
           if (prompt && isVoiceStopCommand(prompt)) {
@@ -348,6 +354,7 @@ export function useVoiceLiveConversation({
           void Promise.resolve(latest.current.onSubmit(prompt, voiceContext)).catch(error => {
             notifyError(error, voiceCopy.liveDelegationFailed)
             session.speak(delegationId, 'Sorry, I could not reach Hermes for that request.')
+            session.settle?.(delegationId)
             setDelegation(null)
             refreshStatus()
           })
@@ -458,6 +465,7 @@ export function useVoiceLiveConversation({
         }
 
         latest.current.consumePendingResponse()
+        session.settle?.(delegationId)
         setDelegation(null)
         refreshStatus()
 
@@ -475,6 +483,7 @@ export function useVoiceLiveConversation({
           session.think(delegationId, 'Hermes finished that request without a spoken result.')
         }
 
+        session.settle?.(delegationId)
         setDelegation(null)
         refreshStatus()
       }

@@ -188,6 +188,12 @@ class GptLiveEngine(VoiceLiveEngine):
     def display_name(self) -> str:
         return "GPT-Live"
 
+    def settings_schema(self) -> dict[str, dict[str, Any]]:
+        return {
+            "voice": {"type": "select", "description": "GPT-Live voice", "options": list(GPT_LIVE_VOICES)},
+            "instructions": {"type": "text", "description": "Extra persona sentences (tone, pace, language)"},
+        }
+
     def status(self, section: dict[str, Any]) -> dict[str, Any]:
         api_key, _base = _resolve_credentials(section)
         return {
@@ -284,6 +290,33 @@ def resolve_voice_live_status() -> dict[str, Any]:
     else:
         verdict = {k: selected[k] for k in ("available", "reason", "model", "voice")}
     return {"mode": mode, **verdict, "engines": rows}
+
+
+def voice_settings_schema() -> dict[str, dict[str, Any]]:
+    """Config-schema entries for Settings → Voice: ``voice.voice_chat_mode`` as a select over every
+    installed mode, plus each live engine's own ``voice.<config_key>.<leaf>`` fields tagged with
+    ``engine`` (the desktop shows only the selected engine's)."""
+    from hermes_cli.plugins import _ensure_plugins_discovered
+    _ensure_plugins_discovered()
+    engines = [GPT_LIVE_ENGINE, *_plugin_engines()]
+    fields: dict[str, dict[str, Any]] = {"voice.voice_chat_mode": {
+        "type": "select", "category": "voice",
+        "description": "Desktop voice conversation engine: chained (speech-to-text + Hermes voice) or a "
+                       "full-duplex live engine that delegates to Hermes",
+        "options": [CHAINED_MODE, *(e.name.strip().lower() for e in engines)],
+        "labels": {CHAINED_MODE: "Speech-to-text + Hermes voice",
+                   **{e.name.strip().lower(): e.display_name for e in engines}},
+    }}
+    for engine in engines:
+        try:
+            schema = engine.settings_schema()
+        except Exception:  # plugin code: a broken schema hides its fields, never the page
+            logger.warning("Voice live engine %r settings_schema failed", engine.name, exc_info=True)
+            continue
+        for leaf, field in schema.items():
+            fields[f"voice.{engine.config_key}.{leaf}"] = {
+                **field, "category": "voice", "engine": engine.name.strip().lower()}
+    return fields
 
 
 def create_live_session(request: dict[str, Any], history: Optional[list] = None) -> dict[str, Any]:
