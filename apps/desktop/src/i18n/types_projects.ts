@@ -25,6 +25,11 @@ export interface SidebarProjectsTranslations {
   menuRename: string
   menuAppearance: string
   noColor: string
+  iconSearch: string
+  iconSearchPlaceholder: string
+  iconSearchEmpty: string
+  iconSearchError: string
+  iconSearchHint: string
   menuAddFolder: string
   menuSetActive: string
   menuDelete: string
