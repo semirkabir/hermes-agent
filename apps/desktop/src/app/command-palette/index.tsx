@@ -17,6 +17,7 @@ import { SESSION_IMPORT_ROUTE } from '@/app/routes'
 import { leaveIntro } from '@/components/onboarding/first-run/intro'
 import { codiconIcon } from '@/components/ui/codicon'
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { glyphIcon } from '@/components/ui/glyph-icon'
 import { HighlightMatches } from '@/components/ui/highlight-matches'
 import { KbdCombo } from '@/components/ui/kbd'
 import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
@@ -838,7 +839,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
         },
         ...filterVisibleProjects(projectTree, dismissedAutoProjects).map(project => ({
           comboHint: 'mod+enter',
-          icon: codiconIcon(project.icon || (project.isNoProject ? 'home' : 'folder-library')),
+          icon: glyphIcon(project.icon || (project.isNoProject ? 'home' : 'folder-library')),
           id: `project-${project.id}`,
           keywords: ['project', 'workspace', 'go to', project.label, ...(project.path ? [project.path] : [])],
           label: project.label,

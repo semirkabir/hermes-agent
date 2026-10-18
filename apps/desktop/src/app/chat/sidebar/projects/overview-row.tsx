@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 
 import { type NewSessionSplitHandler, startNewSessionDrag } from '@/app/chat/new-session-drag'
 import { Codicon } from '@/components/ui/codicon'
+import { GlyphIcon } from '@/components/ui/glyph-icon'
 import { Tip } from '@/components/ui/tooltip'
 import type { SessionInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -53,7 +54,7 @@ export function projectIcon({ color, icon, isAuto, isNoProject }: SidebarProject
 
   return (
     <SidebarRowLeadGlyph style={color ? { color } : undefined}>
-      <Codicon
+      <GlyphIcon
         name={icon || (isNoProject ? 'home' : isAuto ? 'repo' : 'folder-library')}
         size={SIDEBAR_LEAD_ICON_SIZE}
       />
