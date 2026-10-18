@@ -28,7 +28,8 @@ export const GPT_LIVE_ENGINE = 'gpt-live'
 /** What the conversation hook drives. `start` connects (mic + vendor session),
  *  seeded with prior text turns; `think` is quiet progress the voice may
  *  mention, `speak` a result it should say aloud (both keyed to the
- *  delegation they answer); `instruct` steers the persona session-wide;
+ *  delegation they answer; a function-call engine passes the model's own request text as
+ *  `onDelegation`'s third argument); `instruct` steers the persona session-wide;
  *  `close` ends gracefully and must eventually fire `handlers.onClosed`. */
 export interface VoiceLiveTransport {
   start: (history: LiveHistoryMessage[]) => Promise<void>
@@ -37,6 +38,10 @@ export interface VoiceLiveTransport {
   instruct: (content: string) => void
   setMuted: (muted: boolean) => void
   close: () => void
+  /** The Hermes turn for `delegationId` settled; everything `speak` will get for it has been
+   *  sent. Function-call engines (Gemini Live, Grok) return the collected text as the tool
+   *  result here; GPT-Live streams commentary and leaves it out. */
+  settle?: (delegationId: string) => void
 }
 
 /** `owner` is the chat's (connection, profile); dial the gateway with it

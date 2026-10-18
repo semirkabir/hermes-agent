@@ -24,7 +24,7 @@ vi.mock('@/lib/voice-live', () => ({
 const { $voiceLiveStatus, refreshVoiceLiveStatus, setVoiceChatMode } = await import('./voice-live')
 
 function status(mode: VoiceLiveStatus['mode']): VoiceLiveStatus {
-  return { available: true, mode, model: 'gpt-live-1', reason: null, voice: 'alloy' }
+  return { available: true, engines: [], mode, model: 'gpt-live-1', reason: null, voice: 'alloy' }
 }
 
 // Settle every outstanding fetch so no in-flight slot leaks into the next test.

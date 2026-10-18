@@ -252,10 +252,6 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   // Speech-to-text backends — kept in sync with BUILTIN_STT_PROVIDERS in
   // tools/transcription_common.py (local_command is auto-detected, not picked).
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs', 'deepinfra'],
-  // How the desktop voice conversation is wired — tools/voice_live.py owns the
-  // live engines (built-in gpt-live; plugins register more, so the field takes
-  // free input and these are suggestions).
-  'voice.voice_chat_mode': ['chained', 'gpt-live'],
   'voice.gpt_live.voice': [
     'marin',
     'cedar',
@@ -392,7 +388,6 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
 // names faster than this list updates. The ENUM_OPTIONS above become
 // suggestions rather than a gate for these keys.
 export const FREE_INPUT_KEYS = new Set([
-  'voice.voice_chat_mode',
   'tts.edge.voice',
   'voice.gpt_live.voice',
   'tts.openai.model',

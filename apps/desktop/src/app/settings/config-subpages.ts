@@ -3,6 +3,8 @@ interface ConfigSubpageDefinition {
   labelKey: string
   fields?: string[]
   prefixes?: string[]
+  /** Field-name patterns, for families whose names are not known up front (plugin engines). */
+  patterns?: RegExp[]
 }
 
 // Shared by the page filter and search routing. Match field names, not the
@@ -73,7 +75,8 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
       id: 'conversation',
       labelKey: 'voiceConversation',
       fields: ['voice.voice_chat_mode', 'voice.max_recording_seconds', 'voice.client_direct'],
-      prefixes: ['voice.gpt_live.']
+      // Every live engine's own settings (`voice.gpt_live.*`, plugin `voice.<name>_live.*`).
+      patterns: [/^voice\.[a-z0-9_]+_live\./]
     },
     { id: 'transcription', labelKey: 'voiceTranscription', prefixes: ['stt.'] },
     { id: 'speech', labelKey: 'voiceSpeech', fields: ['voice.auto_tts'], prefixes: ['tts.'] }
@@ -103,6 +106,9 @@ export const CONFIG_SUBPAGES: Record<string, { id: string; labelKey: string }[]>
 /** Resolve a schema/config field to the same child page that renders it. */
 export function configSubpageForField(sectionId: string, field: string): string | undefined {
   return CONFIG_SUBPAGE_DEFINITIONS[sectionId]?.find(
-    page => page.fields?.includes(field) || page.prefixes?.some(prefix => field.startsWith(prefix))
+    page =>
+      page.fields?.includes(field) ||
+      page.prefixes?.some(prefix => field.startsWith(prefix)) ||
+      page.patterns?.some(pattern => pattern.test(field))
   )?.id
 }

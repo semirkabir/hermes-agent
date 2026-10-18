@@ -85,7 +85,8 @@ export function buildConfigSearchEntries(
   return sections.flatMap(section => {
     const context = copy.sections[section.id] ?? section.label
     const fields = sectionFields.get(section.id) ?? []
-    const visibleFields = section.id === 'voice' ? fields.filter(([key]) => voiceFieldVisible(key, config)) : fields
+    const visibleFields =
+      section.id === 'voice' ? fields.filter(([key, field]) => voiceFieldVisible(key, config, field)) : fields
 
     return visibleFields.map(([key, field]) => ({
       context,

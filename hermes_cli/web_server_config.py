@@ -401,6 +401,12 @@ def _schema_with_dynamic_provider_options() -> dict[str, dict[str, Any]]:
         if plugin_names:
             merge("terminal.backend", [*tb_options, *plugin_names])
 
+    try:
+        from tools.voice_live import voice_settings_schema
+        overlay.update(voice_settings_schema())
+    except Exception:  # health: allow BLE001 -- plugin engines run here; schema must survive them, traceback logged
+        _log.warning("voice live engine schema unavailable", exc_info=True)
+
     return {**CONFIG_SCHEMA, **overlay} if overlay else CONFIG_SCHEMA
 
 

@@ -175,7 +175,16 @@ export function clearsEnabledToolsets(prev: HermesConfigRecord, next: HermesConf
 
 // Voice renders only fields for the selected TTS/STT provider. Search and the
 // page share this rule so every indexed field can actually mount when opened.
-export function voiceFieldVisible(key: string, config: HermesConfigRecord): boolean {
+export function voiceFieldVisible(key: string, config: HermesConfigRecord, field?: ConfigFieldSchema): boolean {
+  if (field?.engine) {
+    return (
+      field.engine ===
+      String(getNested(config, 'voice.voice_chat_mode') ?? '')
+        .trim()
+        .toLowerCase()
+    )
+  }
+
   const match = /^(tts|stt)\.([^.]+)\./.exec(key)
 
   if (!match) {
@@ -213,6 +222,16 @@ export function inferFieldSchema(value: unknown): ConfigFieldSchema {
 }
 
 // Backend schema omits some declared keys; config presence is the availability signal.
+/** Live voice engine fields the backend schema declares (`engine` set), placed right after
+ *  `voice.voice_chat_mode` in the Voice section; plugin engines bring their own. */
+function engineFieldKeys(sectionId: string, keys: string[], schema: Record<string, ConfigFieldSchema>): string[] {
+  if (sectionId !== 'voice') {
+    return []
+  }
+
+  return Object.keys(schema).filter(key => schema[key]?.engine && !keys.includes(key))
+}
+
 export function sectionFieldEntries(
   schema: Record<string, ConfigFieldSchema>,
   config: HermesConfigRecord
@@ -220,7 +239,7 @@ export function sectionFieldEntries(
   return new Map(
     SECTIONS.map(s => [
       s.id,
-      s.keys.flatMap(k => {
+      [...s.keys, ...engineFieldKeys(s.id, s.keys, schema)].flatMap(k => {
         const value = getNested(config, k)
         const field = schema[k] ?? (value === undefined ? undefined : inferFieldSchema(value))
 

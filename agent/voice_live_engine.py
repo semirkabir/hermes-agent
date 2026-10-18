@@ -42,6 +42,15 @@ class VoiceLiveEngine(ProviderBase):
         """Leaf under ``voice`` holding this engine's settings: ``grok-live`` → ``voice.grok_live``."""
         return self.name.strip().lower().replace("-", "_")
 
+    def settings_schema(self) -> dict[str, dict[str, Any]]:
+        """Settings fields under ``voice.<config_key>``, keyed by leaf name, in display order.
+
+        Each value is a config-schema field (``{"type": "select" | "string" | "text" | "number" |
+        "boolean", "description": ..., "options": [...]}``). Settings → Voice renders them while
+        this engine is the selected mode. Default: none.
+        """
+        return {}
+
     @abc.abstractmethod
     def status(self, section: dict[str, Any]) -> dict[str, Any]:
         """Non-secret readiness for this engine's ``voice.<config_key>`` ``section``.
