@@ -345,3 +345,57 @@ describe('preview routing', () => {
     })
   })
 })
+
+describe('preview routing: store-backed artifacts', () => {
+  beforeEach(() => {
+    $activeSessionId.set(RUNTIME_SESSION_ID)
+    $currentCwd.set('/work')
+    $messages.set([])
+    $browserPages.set({})
+    closeRightRail()
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+    closeRightRail()
+  })
+
+  async function emitArtifactOpen(payload: Record<string, unknown>) {
+    await act(async () => {
+      handleEvent({ payload, session_id: RUNTIME_SESSION_ID, type: 'preview.open' } as unknown as GatewayEvent)
+    })
+  }
+
+  it('opens a store artifact tab instead of the rendered file', async () => {
+    render(<Harness />)
+
+    await emitArtifactOpen({
+      artifact: 'sif-review-abc123',
+      label: 'SIF Review',
+      url: '/opt/data/plugin-data/hermes-artifacts/sif-review-abc123/render.html'
+    })
+
+    await waitFor(() => expect($previewTarget.get()?.url).toBe('store:sif-review-abc123'))
+    expect($previewTarget.get()).toMatchObject({ kind: 'artifact', label: 'SIF Review' })
+    expect($previewTabs.get().map(tab => tab.id)).toEqual(['artifact:store:sif-review-abc123'])
+  })
+
+  it('reuses the same tab when the agent saves again', async () => {
+    render(<Harness />)
+
+    await emitArtifactOpen({ artifact: 'sif-review-abc123', label: 'SIF Review', url: '/x/render.html' })
+    await emitArtifactOpen({ artifact: 'sif-review-abc123', label: 'SIF Review v2', url: '/x/render.html' })
+
+    await waitFor(() => expect($previewTarget.get()?.label).toBe('SIF Review v2'))
+    expect($previewTabs.get()).toHaveLength(1)
+  })
+
+  it('falls back to the file path when the artifact id is malformed', async () => {
+    render(<Harness />)
+
+    await emitArtifactOpen({ artifact: '../etc', label: 'x', url: '/tmp/artifact-test.html' })
+
+    await waitFor(() => expect($previewTarget.get()?.kind).toBe('file'))
+  })
+})

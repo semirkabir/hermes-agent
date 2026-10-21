@@ -165,7 +165,9 @@ export async function readActivePreview(
     target.kind === 'file'
       ? 'File preview — read the file itself with read_file.'
       : target.kind === 'artifact'
-        ? 'Generated artifact — its content is in the conversation that produced it.'
+        ? target.url.startsWith('store:')
+          ? `Saved artifact ${target.url.slice('store:'.length)} — read its source with artifact_get.`
+          : 'Generated artifact — its content is in the conversation that produced it.'
         : 'The page has not finished loading — retry in a moment.'
 
   return windowText(
