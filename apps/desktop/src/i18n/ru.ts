@@ -2466,7 +2466,8 @@ export const ruOverrides = {
     comments: count => (count === 1 ? `${count} комментарий` : `Комментариев: ${count}`),
     sendAll: 'Отправить все',
     removeComment: 'Удалить комментарий',
-    commentsInComposer: 'Добавлено в поле сообщения. Отправьте, когда будете готовы.'
+    commentsInComposer: 'Добавлено в поле сообщения. Отправьте, когда будете готовы.',
+    slideLabel: n => `Слайд ${n}`
   },
   sidebar: {
     profileRail: 'Панель профилей',

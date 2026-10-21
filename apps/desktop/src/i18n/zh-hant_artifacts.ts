@@ -59,7 +59,8 @@ export const zhHantArtifacts = {
     comments: count => `${count} 則留言`,
     sendAll: '全部傳送',
     removeComment: '刪除留言',
-    commentsInComposer: '已加入訊息框，準備好後傳送。'
+    commentsInComposer: '已加入訊息框，準備好後傳送。',
+    slideLabel: n => `投影片 ${n}`
   },
 
   preview: {

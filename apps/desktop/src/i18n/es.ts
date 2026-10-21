@@ -3644,7 +3644,8 @@ export const esOverrides = {
     comments: count => (count === 1 ? `${count} comentario` : `${count} comentarios`),
     sendAll: 'Enviar todo',
     removeComment: 'Quitar comentario',
-    commentsInComposer: 'Añadido al cuadro de mensaje. Envíalo cuando quieras.'
+    commentsInComposer: 'Añadido al cuadro de mensaje. Envíalo cuando quieras.',
+    slideLabel: n => `Diapositiva ${n}`
   },
   sidebar: {
     filter: {

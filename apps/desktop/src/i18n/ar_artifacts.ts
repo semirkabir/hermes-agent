@@ -57,7 +57,8 @@ export const arArtifacts = {
     comments: count => (count === 1 ? `تعليق واحد` : `${count} تعليقات`),
     sendAll: 'إرسال الكل',
     removeComment: 'إزالة التعليق',
-    commentsInComposer: 'أُضيف إلى مربع الرسالة. أرسله عندما تكون جاهزًا.'
+    commentsInComposer: 'أُضيف إلى مربع الرسالة. أرسله عندما تكون جاهزًا.',
+    slideLabel: n => `الشريحة ${n}`
   },
   preview: {
     tab: 'معاينة',

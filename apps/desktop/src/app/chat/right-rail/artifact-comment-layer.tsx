@@ -2,151 +2,141 @@ import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { requestComposerFocus, requestComposerInsert, requestComposerSubmit } from '@/app/chat/composer/focus'
+import { MessageTextContent } from '@/components/assistant-ui/markdown-text'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import {
   $pendingArtifactComments,
   addPendingArtifactComment,
-  ARTIFACT_BRIDGE_TAG,
   artifactCommentsPrompt,
-  type ArtifactSelection,
   clearPendingArtifactComments,
-  newArtifactBridgeNonce,
   type PendingArtifactComment,
-  readArtifactBridgeMessage,
   removePendingArtifactComment,
-  tidyQuote,
-  withArtifactBridge
+  splitArtifactBlocks,
+  tidyQuote
 } from '@/lib/artifact-comments'
 import { ArrowUp, MessageCircle, X } from '@/lib/icons'
-import { cn } from '@/lib/utils'
 import { notify } from '@/store/notifications'
 
 /** Stable empty list, so effects keyed on the queue don't re-run every render. */
 const NO_COMMENTS: readonly PendingArtifactComment[] = []
+const HIGHLIGHT_NAME = 'hermes-artifact-pending'
 const POPUP_WIDTH = 288
 const POPUP_HEIGHT = 132
 const GAP = 8
 
+interface Draft {
+  block: number
+  quote: string
+  x: number
+  y: number
+}
+
 interface ArtifactCommentLayerProps {
   artifactId: string
-  html: string
+  content: string
+  kind: string
   newestVersion: number
   title: string
   version: number
 }
 
 /**
- * The rendered artifact plus highlight-to-comment: select text in the frame,
- * a small box pops up beside it, "Add" queues the comment (the passage stays
- * highlighted), and the tray at the bottom sends every queued comment to the
- * agent as one message.
+ * A Markdown artifact (doc or deck) rendered natively in the panel, with
+ * Redline-style highlight-to-comment: select text, a small box pops up under
+ * it, Add queues the comment and keeps the passage highlighted, and the tray
+ * sends every queued comment to the agent as one message.
  */
-export function ArtifactCommentLayer({ artifactId, html, newestVersion, title, version }: ArtifactCommentLayerProps) {
+export function ArtifactCommentLayer({ artifactId, content, kind, newestVersion, title, version }: ArtifactCommentLayerProps) {
   const { t } = useI18n()
   const copy = t.artifactPreview
-  const frameRef = useRef<HTMLIFrameElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLDivElement>(null)
+  const docRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const pending = useStore($pendingArtifactComments)[artifactId] ?? NO_COMMENTS
-  const [selection, setSelection] = useState<ArtifactSelection | null>(null)
+  const blocks = useMemo(() => splitArtifactBlocks(kind, content), [content, kind])
+  const [draft, setDraft] = useState<Draft | null>(null)
   const [note, setNote] = useState('')
-  const [frameReady, setFrameReady] = useState(false)
-
-  // One nonce per rendered document: the frame only reports, and only obeys,
-  // messages carrying it. Same html → same srcDoc → the frame doesn't reload.
-  const { nonce, srcDoc } = useMemo(() => {
-    const fresh = newArtifactBridgeNonce()
-
-    return { nonce: fresh, srcDoc: withArtifactBridge(html, fresh) }
-  }, [html])
-
-  const postToFrame = useCallback(
-    (message: Record<string, unknown>) => {
-      frameRef.current?.contentWindow?.postMessage({ ...message, [ARTIFACT_BRIDGE_TAG]: nonce }, '*')
-    },
-    [nonce]
-  )
 
   useEffect(() => {
-    setFrameReady(false)
-    setSelection(null)
+    setDraft(null)
     setNote('')
-  }, [srcDoc])
+  }, [content])
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (!frameRef.current || event.source !== frameRef.current.contentWindow) {
-        return
-      }
-
-      const message = readArtifactBridgeMessage(event.data, nonce)
-
-      if (!message) {
-        return
-      }
-
-      if (message.type === 'ready') {
-        setFrameReady(true)
-
-        return
-      }
-
-      const quote = message.text
-
-      if (!quote.trim() || !message.rect) {
-        // A click elsewhere in the artifact clears the selection; keep a
-        // half-written note's box open only while there is text to anchor it.
-        setSelection(current => (current && note.trim() ? current : null))
-
-        return
-      }
-
-      setSelection({ end: message.end, quote, rect: message.rect, start: message.start })
-    }
-
-    window.addEventListener('message', onMessage)
-
-    return () => window.removeEventListener('message', onMessage)
-  }, [nonce, note])
-
-  // Paint queued comments as highlights whenever they change or the frame (re)loads.
-  useEffect(() => {
-    if (frameReady) {
-      postToFrame({
-        items: pending.map(comment => ({ end: comment.end, start: comment.start, text: comment.quote })),
-        type: 'highlights'
-      })
-    }
-  }, [frameReady, pending, postToFrame])
-
-  useEffect(() => {
-    if (selection) {
+    if (draft) {
       textareaRef.current?.focus({ preventScroll: true })
     }
-  }, [selection])
+  }, [draft])
+
+  // Paint queued quotes. Markdown renders after commit, so retry on the next frame too.
+  useEffect(() => {
+    const paint = () => paintPendingHighlights(docRef.current, pending)
+    paint()
+    const frame = requestAnimationFrame(paint)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      clearPendingHighlights()
+    }
+  }, [pending, blocks])
+
+  const onMouseUp = useCallback(() => {
+    // Let the browser settle the selection first (a click inside a selection collapses it late).
+    window.setTimeout(() => {
+      const selection = window.getSelection()
+      const quote = selection?.toString() ?? ''
+      const main = mainRef.current
+
+      if (!selection || !quote.trim() || !main || !docRef.current?.contains(selection.anchorNode)) {
+        if (!note.trim()) {
+          setDraft(null)
+        }
+
+        return
+      }
+
+      const anchor =
+        selection.anchorNode?.nodeType === Node.TEXT_NODE ? selection.anchorNode.parentElement : selection.anchorNode
+
+      const blockEl = anchor instanceof Element ? anchor.closest<HTMLElement>('[data-artifact-block]') : null
+
+      if (!blockEl) {
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      // Fall back to the block's box where a Range has no geometry (jsdom).
+      const rect = typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : blockEl.getBoundingClientRect()
+      const box = main.getBoundingClientRect()
+      const below = rect.bottom - box.top + main.scrollTop + GAP
+      const above = rect.top - box.top + main.scrollTop - POPUP_HEIGHT - GAP
+      const fitsBelow = rect.bottom - box.top + GAP + POPUP_HEIGHT <= main.clientHeight
+
+      setDraft({
+        block: Number(blockEl.dataset.artifactBlock),
+        quote,
+        x: Math.max(GAP, Math.min(rect.left - box.left, main.clientWidth - POPUP_WIDTH - GAP)),
+        y: fitsBelow || above < main.scrollTop ? below : above
+      })
+    }, 0)
+  }, [note])
 
   const dismiss = useCallback(() => {
-    setSelection(null)
+    setDraft(null)
     setNote('')
-    postToFrame({ type: 'clear-selection' })
-  }, [postToFrame])
+    window.getSelection()?.removeAllRanges()
+  }, [])
 
   const add = useCallback(() => {
-    if (!selection || !note.trim()) {
+    if (!draft || !note.trim()) {
       return
     }
 
-    addPendingArtifactComment(artifactId, {
-      end: selection.end,
-      note,
-      quote: selection.quote,
-      start: selection.start,
-      version
-    })
+    addPendingArtifactComment(artifactId, { block: draft.block, note, quote: draft.quote, version })
     dismiss()
-  }, [artifactId, dismiss, note, selection, version])
+  }, [artifactId, dismiss, draft, note, version])
 
   const sendAll = useCallback(() => {
     if (!pending.length) {
@@ -166,27 +156,46 @@ export function ArtifactCommentLayer({ artifactId, html, newestVersion, title, v
     clearPendingArtifactComments(artifactId)
   }, [artifactId, copy, newestVersion, pending, title])
 
-  const popup = selection ? popupPosition(selection, containerRef.current) : null
-
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="relative min-h-0 flex-1" ref={containerRef}>
-        <iframe
-          className="block size-full border-0"
-          ref={frameRef}
-          sandbox="allow-scripts"
-          srcDoc={srcDoc}
-          title={title}
-        />
+    <div className="flex h-full flex-col overflow-hidden" data-testid="artifact-comment-layer">
+      <div className="relative min-h-0 flex-1 overflow-y-auto" ref={mainRef}>
+        <div className="mx-auto max-w-3xl px-6 py-5" onMouseUp={onMouseUp} ref={docRef}>
+          {blocks.map((block, index) => (
+            <div data-artifact-block={index} key={index}>
+              {block.slideStart != null && (
+                <div className="mt-6 mb-2 border-t border-border/50 pt-2 text-[0.625rem] font-semibold tracking-[0.08em] text-muted-foreground uppercase first:mt-0 first:border-t-0 first:pt-0">
+                  {copy.slideLabel(block.slideStart)}
+                </div>
+              )}
+              <MessageTextContent media={false} text={block.text} />
+              {pending.some(comment => comment.block === index) && (
+                <div className="-mt-1 mb-1 flex gap-1">
+                  {pending.map((comment, n) =>
+                    comment.block === index ? (
+                      <span
+                        className="rounded bg-[color-mix(in_srgb,var(--ui-accent)_22%,transparent)] px-1 text-[0.5625rem] font-semibold tabular-nums"
+                        key={comment.id}
+                        title={comment.note}
+                      >
+                        {n + 1}
+                      </span>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
 
-        {selection && popup && (
+        {draft && (
           <div
             className="absolute z-20 flex flex-col gap-1.5 rounded-lg border border-border bg-popover p-2 shadow-md"
             data-testid="artifact-comment-popup"
-            style={{ left: popup.left, top: popup.top, width: POPUP_WIDTH }}
+            onMouseUp={event => event.stopPropagation()}
+            style={{ left: draft.x, top: draft.y, width: POPUP_WIDTH }}
           >
-            <div className="truncate text-[0.625rem] text-muted-foreground" title={selection.quote}>
-              “{tidyQuote(selection.quote)}”
+            <div className="truncate text-[0.625rem] text-muted-foreground" title={draft.quote}>
+              “{tidyQuote(draft.quote)}”
             </div>
             <textarea
               aria-label={copy.commentPlaceholder}
@@ -196,7 +205,7 @@ export function ArtifactCommentLayer({ artifactId, html, newestVersion, title, v
                 if (event.key === 'Escape') {
                   event.preventDefault()
                   dismiss()
-                } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey || !event.shiftKey)) {
+                } else if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   add()
                 }
@@ -244,7 +253,7 @@ export function ArtifactCommentLayer({ artifactId, html, newestVersion, title, v
                   <div className="truncate text-muted-foreground" title={comment.quote}>
                     “{tidyQuote(comment.quote)}”
                   </div>
-                  <div className={cn('whitespace-pre-wrap wrap-anywhere')}>{comment.note}</div>
+                  <div className="whitespace-pre-wrap wrap-anywhere">{comment.note}</div>
                 </div>
                 <Tip label={copy.removeComment}>
                   <button
@@ -265,13 +274,88 @@ export function ArtifactCommentLayer({ artifactId, html, newestVersion, title, v
   )
 }
 
-/** Below the selection when it fits, above it otherwise; clamped inside the pane. */
-function popupPosition(selection: ArtifactSelection, container: HTMLElement | null) {
-  const width = container?.clientWidth || 640
-  const height = container?.clientHeight || 480
-  const left = Math.max(GAP, Math.min(selection.rect.left, width - POPUP_WIDTH - GAP))
-  const below = selection.rect.bottom + GAP
-  const top = below + POPUP_HEIGHT <= height ? below : Math.max(GAP, selection.rect.top - POPUP_HEIGHT - GAP)
+// ── highlights (CSS Custom Highlight API, no DOM mutation) ───────────────────
 
-  return { left, top }
+interface HighlightRegistry {
+  delete: (name: string) => void
+  set: (name: string, value: unknown) => void
+}
+
+function highlightApi(): null | { create: (ranges: Range[]) => unknown; registry: HighlightRegistry } {
+  const registry = (globalThis.CSS as unknown as { highlights?: HighlightRegistry } | undefined)?.highlights
+  const Ctor = (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight
+
+  return registry && Ctor ? { create: ranges => new Ctor(...ranges), registry } : null
+}
+
+function clearPendingHighlights() {
+  highlightApi()?.registry.delete(HIGHLIGHT_NAME)
+}
+
+/** The range covering `quote` inside `root`'s text, matching across element boundaries. */
+export function findQuoteRange(root: Element, quote: string): null | Range {
+  const needle = quote.trim()
+
+  if (!needle) {
+    return null
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  let text = ''
+
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    nodes.push(node as Text)
+    text += (node as Text).data
+  }
+
+  const at = text.indexOf(needle)
+
+  if (at < 0) {
+    return null
+  }
+
+  const range = document.createRange()
+  let offset = 0
+  let started = false
+
+  for (const node of nodes) {
+    const end = offset + node.data.length
+
+    if (!started && at < end) {
+      range.setStart(node, at - offset)
+      started = true
+    }
+
+    if (started && at + needle.length <= end) {
+      range.setEnd(node, at + needle.length - offset)
+
+      return range
+    }
+
+    offset = end
+  }
+
+  return null
+}
+
+function paintPendingHighlights(doc: HTMLElement | null, pending: readonly PendingArtifactComment[]) {
+  const api = highlightApi()
+
+  if (!api || !doc) {
+    return
+  }
+
+  const ranges = pending.flatMap(comment => {
+    const block = doc.querySelector(`[data-artifact-block="${comment.block}"]`)
+    const range = block ? findQuoteRange(block, comment.quote) : null
+
+    return range ? [range] : []
+  })
+
+  if (ranges.length) {
+    api.registry.set(HIGHLIGHT_NAME, api.create(ranges))
+  } else {
+    api.registry.delete(HIGHLIGHT_NAME)
+  }
 }
