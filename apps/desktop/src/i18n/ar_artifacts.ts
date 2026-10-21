@@ -51,7 +51,13 @@ export const arArtifacts = {
     openInBrowser: 'فتح في المتصفح',
     openInBrowserFailed: 'تعذّر الفتح في المتصفح',
     missingTitle: 'الناتج غير متاح',
-    missingBody: 'لم يعد هذا الناتج موجودًا في السجل المحلي.'
+    missingBody: 'لم يعد هذا الناتج موجودًا في السجل المحلي.',
+    commentPlaceholder: 'علّق أو اطلب تعديلًا…',
+    addComment: 'إضافة',
+    comments: count => (count === 1 ? `تعليق واحد` : `${count} تعليقات`),
+    sendAll: 'إرسال الكل',
+    removeComment: 'إزالة التعليق',
+    commentsInComposer: 'أُضيف إلى مربع الرسالة. أرسله عندما تكون جاهزًا.'
   },
   preview: {
     tab: 'معاينة',

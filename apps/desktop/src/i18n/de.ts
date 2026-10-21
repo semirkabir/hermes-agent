@@ -3644,7 +3644,13 @@ export const deOverrides = {
     openInBrowser: 'Im Browser öffnen',
     openInBrowserFailed: 'Konnte nicht im Browser geöffnet werden',
     missingTitle: 'Artifact nicht verfügbar',
-    missingBody: 'Dieses Artifact ist nicht mehr in der lokalen Registry.'
+    missingBody: 'Dieses Artifact ist nicht mehr in der lokalen Registry.',
+    commentPlaceholder: 'Kommentieren oder Änderung anfragen…',
+    addComment: 'Hinzufügen',
+    comments: count => (count === 1 ? `${count} Kommentar` : `${count} Kommentare`),
+    sendAll: 'Alle senden',
+    removeComment: 'Kommentar entfernen',
+    commentsInComposer: 'Zum Nachrichtenfeld hinzugefügt. Sende es, wenn du bereit bist.'
   },
   sidebar: {
     filter: {

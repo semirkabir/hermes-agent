@@ -53,7 +53,13 @@ export const zhHantArtifacts = {
     openInBrowser: '在瀏覽器中開啟',
     openInBrowserFailed: '無法在瀏覽器中開啟',
     missingTitle: '產物無法使用',
-    missingBody: '此產物已不在本機註冊表中。'
+    missingBody: '此產物已不在本機註冊表中。',
+    commentPlaceholder: '留言或要求修改…',
+    addComment: '新增',
+    comments: count => `${count} 則留言`,
+    sendAll: '全部傳送',
+    removeComment: '刪除留言',
+    commentsInComposer: '已加入訊息框，準備好後傳送。'
   },
 
   preview: {

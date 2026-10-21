@@ -2185,7 +2185,13 @@ export const jaOverrides = {
     openInBrowser: 'ブラウザで開く',
     openInBrowserFailed: 'ブラウザで開けませんでした',
     missingTitle: 'アーティファクトを利用できません',
-    missingBody: 'このアーティファクトはローカルレジストリに存在しません。'
+    missingBody: 'このアーティファクトはローカルレジストリに存在しません。',
+    commentPlaceholder: 'コメントまたは編集依頼…',
+    addComment: '追加',
+    comments: count => `${count} 件のコメント`,
+    sendAll: 'すべて送信',
+    removeComment: 'コメントを削除',
+    commentsInComposer: 'メッセージ欄に追加しました。準備ができたら送信してください。'
   },
 
   sidebar: {
