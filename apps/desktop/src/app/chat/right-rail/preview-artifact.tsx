@@ -22,6 +22,7 @@ import { $artifactRegistry, $artifactVersionSelection, findArtifact, selectArtif
 import { notifyError } from '@/store/notifications'
 import type { PreviewTarget } from '@/store/preview'
 
+import { ArtifactCommentLayer } from './artifact-comment-layer'
 import { PreviewEmptyState, PreviewModeSwitcher, type PreviewViewMode, SourceView } from './preview-file'
 
 const MIME_BY_KIND = { code: 'text/plain', html: 'text/html', svg: 'image/svg+xml' } as const
@@ -428,12 +429,13 @@ function StoreArtifactPreview({
       />
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === 'rendered' ? (
-          <iframe
-            className="block size-full border-0"
+          <ArtifactCommentLayer
+            artifactId={view.id}
+            html={view.html}
             key={`${view.id}@${view.selected_version}`}
-            sandbox="allow-scripts"
-            srcDoc={view.html}
+            newestVersion={view.version}
             title={view.title}
+            version={view.selected_version}
           />
         ) : (
           <SourceView language={view.source_ext === 'md' ? 'markdown' : 'html'} text={view.content} />

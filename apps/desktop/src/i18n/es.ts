@@ -3638,7 +3638,13 @@ export const esOverrides = {
     openInBrowser: 'Abrir en el navegador',
     openInBrowserFailed: 'No se pudo abrir en el navegador',
     missingTitle: 'Artefacto no disponible',
-    missingBody: 'Este artefacto ya no está en el registro local.'
+    missingBody: 'Este artefacto ya no está en el registro local.',
+    commentPlaceholder: 'Comenta o pide un cambio…',
+    addComment: 'Añadir',
+    comments: count => (count === 1 ? `${count} comentario` : `${count} comentarios`),
+    sendAll: 'Enviar todo',
+    removeComment: 'Quitar comentario',
+    commentsInComposer: 'Añadido al cuadro de mensaje. Envíalo cuando quieras.'
   },
   sidebar: {
     filter: {

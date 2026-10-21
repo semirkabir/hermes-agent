@@ -2460,7 +2460,13 @@ export const ruOverrides = {
     openInBrowser: 'Открыть в браузере',
     openInBrowserFailed: 'Не удалось открыть в браузере',
     missingTitle: 'Артефакт недоступен',
-    missingBody: 'Этот артефакт больше нет в локальном реестре.'
+    missingBody: 'Этот артефакт больше нет в локальном реестре.',
+    commentPlaceholder: 'Комментарий или правка…',
+    addComment: 'Добавить',
+    comments: count => (count === 1 ? `${count} комментарий` : `Комментариев: ${count}`),
+    sendAll: 'Отправить все',
+    removeComment: 'Удалить комментарий',
+    commentsInComposer: 'Добавлено в поле сообщения. Отправьте, когда будете готовы.'
   },
   sidebar: {
     profileRail: 'Панель профилей',

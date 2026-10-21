@@ -3653,7 +3653,13 @@ export const frOverrides = {
     openInBrowser: 'Ouvrir dans le navigateur',
     openInBrowserFailed: "Impossible d'ouvrir dans le navigateur",
     missingTitle: 'Artefact indisponible',
-    missingBody: 'Cet artefact ne figure plus dans le registre local.'
+    missingBody: 'Cet artefact ne figure plus dans le registre local.',
+    commentPlaceholder: 'Commentez ou demandez une modification…',
+    addComment: 'Ajouter',
+    comments: count => (count === 1 ? `${count} commentaire` : `${count} commentaires`),
+    sendAll: 'Tout envoyer',
+    removeComment: 'Supprimer le commentaire',
+    commentsInComposer: 'Ajouté à la zone de message. Envoyez-le quand vous êtes prêt.'
   },
   sidebar: {
     filter: {

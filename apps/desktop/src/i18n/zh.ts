@@ -3108,7 +3108,13 @@ export const zhOverrides = {
     openInBrowser: '在浏览器中打开',
     openInBrowserFailed: '无法在浏览器中打开',
     missingTitle: '产物不可用',
-    missingBody: '此产物已不在本地注册表中。'
+    missingBody: '此产物已不在本地注册表中。',
+    commentPlaceholder: '评论或请求修改…',
+    addComment: '添加',
+    comments: count => `${count} 条评论`,
+    sendAll: '全部发送',
+    removeComment: '删除评论',
+    commentsInComposer: '已添加到消息框，准备好后发送。'
   },
 
   sidebar: {

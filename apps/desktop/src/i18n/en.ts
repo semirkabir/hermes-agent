@@ -3207,7 +3207,13 @@ export const en: Translations = {
     openInBrowser: 'Open in browser',
     openInBrowserFailed: 'Could not open in browser',
     missingTitle: 'Artifact unavailable',
-    missingBody: 'This artifact is no longer in the local registry.'
+    missingBody: 'This artifact is no longer in the local registry.',
+    commentPlaceholder: 'Comment or ask for an edit…',
+    addComment: 'Add',
+    comments: count => (count === 1 ? `${count} comment` : `${count} comments`),
+    sendAll: 'Send all',
+    removeComment: 'Remove comment',
+    commentsInComposer: 'Added to the message box. Send it when you\'re ready.'
   },
 
   sidebar: {

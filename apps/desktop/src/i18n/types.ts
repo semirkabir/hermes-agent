@@ -2799,6 +2799,12 @@ export interface Translations extends NoticeTranslations {
     openInBrowserFailed: string
     missingTitle: string
     missingBody: string
+    commentPlaceholder: string
+    addComment: string
+    comments: (count: number) => string
+    sendAll: string
+    removeComment: string
+    commentsInComposer: string
   }
 
   sidebar: {
