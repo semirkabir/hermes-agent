@@ -3659,7 +3659,8 @@ export const frOverrides = {
     comments: count => (count === 1 ? `${count} commentaire` : `${count} commentaires`),
     sendAll: 'Tout envoyer',
     removeComment: 'Supprimer le commentaire',
-    commentsInComposer: 'Ajouté à la zone de message. Envoyez-le quand vous êtes prêt.'
+    commentsInComposer: 'Ajouté à la zone de message. Envoyez-le quand vous êtes prêt.',
+    slideLabel: n => `Diapositive ${n}`
   },
   sidebar: {
     filter: {

@@ -3213,7 +3213,8 @@ export const en: Translations = {
     comments: count => (count === 1 ? `${count} comment` : `${count} comments`),
     sendAll: 'Send all',
     removeComment: 'Remove comment',
-    commentsInComposer: 'Added to the message box. Send it when you\'re ready.'
+    commentsInComposer: 'Added to the message box. Send it when you\'re ready.',
+    slideLabel: n => `Slide ${n}`
   },
 
   sidebar: {

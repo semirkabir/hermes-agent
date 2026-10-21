@@ -2191,7 +2191,8 @@ export const jaOverrides = {
     comments: count => `${count} 件のコメント`,
     sendAll: 'すべて送信',
     removeComment: 'コメントを削除',
-    commentsInComposer: 'メッセージ欄に追加しました。準備ができたら送信してください。'
+    commentsInComposer: 'メッセージ欄に追加しました。準備ができたら送信してください。',
+    slideLabel: n => `スライド ${n}`
   },
 
   sidebar: {

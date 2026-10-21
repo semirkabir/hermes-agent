@@ -3650,7 +3650,8 @@ export const deOverrides = {
     comments: count => (count === 1 ? `${count} Kommentar` : `${count} Kommentare`),
     sendAll: 'Alle senden',
     removeComment: 'Kommentar entfernen',
-    commentsInComposer: 'Zum Nachrichtenfeld hinzugefügt. Sende es, wenn du bereit bist.'
+    commentsInComposer: 'Zum Nachrichtenfeld hinzugefügt. Sende es, wenn du bereit bist.',
+    slideLabel: n => `Folie ${n}`
   },
   sidebar: {
     filter: {

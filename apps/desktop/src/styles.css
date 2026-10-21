@@ -3886,3 +3886,9 @@ html[data-hud-window] [data-slot='popover-content'] {
 [data-pane-hidden] * {
   visibility: inherit !important;
 }
+
+/* Queued artifact comments (right panel), painted via the CSS Custom Highlight API. */
+::highlight(hermes-artifact-pending) {
+  background-color: color-mix(in srgb, var(--ui-accent, #ffbf00) 34%, transparent);
+  color: inherit;
+}

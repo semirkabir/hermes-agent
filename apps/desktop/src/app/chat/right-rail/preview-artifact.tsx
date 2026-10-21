@@ -429,14 +429,25 @@ function StoreArtifactPreview({
       />
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === 'rendered' ? (
-          <ArtifactCommentLayer
-            artifactId={view.id}
-            html={view.html}
-            key={`${view.id}@${view.selected_version}`}
-            newestVersion={view.version}
-            title={view.title}
-            version={view.selected_version}
-          />
+          view.source_ext === 'md' ? (
+            <ArtifactCommentLayer
+              artifactId={view.id}
+              content={view.content}
+              key={`${view.id}@${view.selected_version}`}
+              kind={view.kind}
+              newestVersion={view.version}
+              title={view.title}
+              version={view.selected_version}
+            />
+          ) : (
+            <iframe
+              className="block size-full border-0"
+              key={`${view.id}@${view.selected_version}`}
+              sandbox="allow-scripts"
+              srcDoc={view.html}
+              title={view.title}
+            />
+          )
         ) : (
           <SourceView language={view.source_ext === 'md' ? 'markdown' : 'html'} text={view.content} />
         )}

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { emitGatewayEvent } from '@/contrib/events'
-import { $pendingArtifactComments, ARTIFACT_BRIDGE_TAG } from '@/lib/artifact-comments'
+import { $pendingArtifactComments } from '@/lib/artifact-comments'
 import {
   $storeArtifactRevision,
   $storeArtifactVersion,
@@ -25,19 +25,19 @@ const composer = vi.hoisted(() => ({
 vi.mock('@/api/plugins', () => ({ pluginRest }))
 vi.mock('@/app/chat/composer/focus', () => composer)
 
-function view(version: number, newest = version, html = `<h1>v${version}</h1>`): StoreArtifactView {
+function view(version: number, newest = version, html = `<h1>v${version}</h1>`, sourceExt = 'html', content = `<h1>v${version}</h1>`): StoreArtifactView {
   return {
     archived: false,
-    content: `# v${version}`,
+    content,
     created_at: 1,
     html,
     id: 'sif-review-abc123',
-    kind: 'doc',
+    kind: sourceExt === 'md' ? 'doc' : 'design',
     pinned: false,
     selected_version: version,
     session_id: 's1',
     size: 4,
-    source_ext: 'md',
+    source_ext: sourceExt,
     summary: '',
     title: 'SIF Review',
     updated_at: 2,
@@ -76,7 +76,6 @@ describe('StoreArtifactPreview', () => {
     expect(pluginRest).toHaveBeenCalledWith('hermes-artifacts', '/item/sif-review-abc123/view')
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
     expect(frame.srcdoc).toContain('<h1>v1</h1>')
-    expect(frame.srcdoc).toContain('<script>')
   })
 
   it('re-fetches when the gateway broadcasts a change for this artifact', async () => {
@@ -132,7 +131,7 @@ describe('StoreArtifactPreview', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /source/i }))
 
-    await screen.findByText('# v1')
+    await screen.findByText('<h1>v1</h1>')
     expect(screen.queryByTitle('SIF Review')).toBeNull()
   })
 
@@ -148,48 +147,79 @@ describe('StoreArtifactPreview', () => {
   })
 })
 
-/** Pretend the sandboxed frame's bridge posted `message` (same nonce it was built with). */
-function fromFrame(frame: HTMLIFrameElement, message: Record<string, unknown>) {
-  const nonce = /"([0-9a-f]{24})"/.exec(frame.srcdoc)![1]
 
-  act(() => {
-    window.dispatchEvent(
-      new MessageEvent('message', { data: { ...message, [ARTIFACT_BRIDGE_TAG]: nonce }, source: frame.contentWindow })
-    )
-  })
+const DOC = '# SIF Review\n\nHoldings rose 4% this quarter.\n\nQ3 outlook is cautious.'
+
+function docView(): StoreArtifactView {
+  return view(2, 2, '<h1>ignored</h1>', 'md', DOC)
 }
 
-describe('highlight to comment', () => {
+/** Select `text` inside the rendered doc and release the mouse, like a user drag. */
+async function highlight(text: string) {
+  const layer = screen.getByTestId('artifact-comment-layer')
+  // eslint-disable-next-line no-restricted-globals -- simulating a real text selection needs the live document
+  const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const at = node.data.indexOf(text)
+
+    if (at >= 0) {
+      // eslint-disable-next-line no-restricted-globals -- simulating a real text selection needs the live document
+      const range = document.createRange()
+      range.setStart(node, at)
+      range.setEnd(node, at + text.length)
+      window.getSelection()!.removeAllRanges()
+      window.getSelection()!.addRange(range)
+      fireEvent.mouseUp(node.parentElement!)
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 5))
+      })
+
+      return
+    }
+  }
+
+  throw new Error(`text not rendered: ${text}`)
+}
+
+describe('highlight to comment (docs render natively, like Redline)', () => {
   beforeEach(() => {
     pluginRest.mockReset()
-    pluginRest.mockResolvedValue(view(2))
+    pluginRest.mockResolvedValue(docView())
     composer.requestComposerSubmit.mockClear().mockReturnValue(true)
     composer.requestComposerInsert.mockClear()
   })
 
   afterEach(() => {
     cleanup()
+    window.getSelection()?.removeAllRanges()
     $pendingArtifactComments.set({})
     $storeArtifactVersion.set({})
     $storeArtifactRevision.set({})
   })
 
-  const select = (frame: HTMLIFrameElement, text: string, start = 0) =>
-    fromFrame(frame, { end: start + text.length, rect: { bottom: 40, left: 20, right: 120, top: 24 }, start, text, type: 'selection' })
-
-  it('pops a comment box over a highlight, queues several, and sends them all as one message', async () => {
+  it('renders a Markdown doc in the panel itself, not in a frame', async () => {
     render(<ArtifactPreview target={storeArtifactTarget('sif-review-abc123', 'SIF Review')} />)
-    const frame = (await screen.findByTitle('SIF Review')) as HTMLIFrameElement
 
-    select(frame, 'Holdings rose 4%')
+    await screen.findByText('Holdings rose 4% this quarter.')
+    expect(screen.queryByTitle('SIF Review')).toBeNull()
+    // eslint-disable-next-line no-restricted-globals -- simulating a real text selection needs the live document
+    expect(document.querySelector('iframe')).toBeNull()
+  })
+
+  it('pops a box over a highlight, queues several, and sends them all as one message', async () => {
+    render(<ArtifactPreview target={storeArtifactTarget('sif-review-abc123', 'SIF Review')} />)
+    await screen.findByText('Holdings rose 4% this quarter.')
+
+    await highlight('rose 4%')
     const box = await screen.findByTestId('artifact-comment-popup')
-    expect(box.textContent).toContain('Holdings rose 4%')
+    expect(box.textContent).toContain('rose 4%')
 
     fireEvent.change(screen.getByPlaceholderText('Comment or ask for an edit…'), { target: { value: 'say why' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect(screen.queryByTestId('artifact-comment-popup')).toBeNull()
 
-    select(frame, 'Q3 outlook', 40)
+    await highlight('Q3 outlook')
     fireEvent.change(await screen.findByPlaceholderText('Comment or ask for an edit…'), { target: { value: 'cut this' } })
     fireEvent.keyDown(screen.getByPlaceholderText('Comment or ask for an edit…'), { key: 'Enter' })
 
@@ -197,25 +227,26 @@ describe('highlight to comment', () => {
     expect(tray.textContent).toContain('2 comments')
     expect(tray.textContent).toContain('say why')
     expect(tray.textContent).toContain('cut this')
+    expect($pendingArtifactComments.get()['sif-review-abc123']!.map(c => c.block)).toEqual([1, 2])
 
     fireEvent.click(screen.getByRole('button', { name: 'Send all' }))
 
     expect(composer.requestComposerSubmit).toHaveBeenCalledTimes(1)
     const prompt = composer.requestComposerSubmit.mock.calls[0]![0]
     expect(prompt).toContain('id sif-review-abc123')
-    expect(prompt).toContain('1. On "Holdings rose 4%"\n   say why')
+    expect(prompt).toContain('1. On "rose 4%"\n   say why')
     expect(prompt).toContain('2. On "Q3 outlook"\n   cut this')
     expect(screen.queryByTestId('artifact-comment-tray')).toBeNull()
   })
 
   it('removes a single queued comment and cancels a draft with Escape', async () => {
     render(<ArtifactPreview target={storeArtifactTarget('sif-review-abc123', 'SIF Review')} />)
-    const frame = (await screen.findByTitle('SIF Review')) as HTMLIFrameElement
+    await screen.findByText('Holdings rose 4% this quarter.')
 
-    select(frame, 'alpha')
+    await highlight('Holdings')
     fireEvent.change(await screen.findByPlaceholderText('Comment or ask for an edit…'), { target: { value: 'one' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-    select(frame, 'beta', 10)
+    await highlight('cautious')
     fireEvent.change(await screen.findByPlaceholderText('Comment or ask for an edit…'), { target: { value: 'two' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
@@ -223,23 +254,20 @@ describe('highlight to comment', () => {
     expect(screen.getByTestId('artifact-comment-tray').textContent).toContain('1 comment')
     expect(screen.getByTestId('artifact-comment-tray').textContent).not.toContain('one')
 
-    select(frame, 'gamma', 20)
+    await highlight('quarter')
     fireEvent.keyDown(await screen.findByPlaceholderText('Comment or ask for an edit…'), { key: 'Escape' })
     expect(screen.queryByTestId('artifact-comment-popup')).toBeNull()
     expect($pendingArtifactComments.get()['sif-review-abc123']).toHaveLength(1)
   })
 
-  it('ignores messages from anything but this frame with this nonce', async () => {
+  it('does nothing for a click with no selection', async () => {
     render(<ArtifactPreview target={storeArtifactTarget('sif-review-abc123', 'SIF Review')} />)
-    await screen.findByTitle('SIF Review')
+    const para = await screen.findByText('Holdings rose 4% this quarter.')
 
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: { [ARTIFACT_BRIDGE_TAG]: 'forged', rect: { bottom: 1, left: 1, right: 1, top: 1 }, text: 'x', type: 'selection' },
-          source: window
-        })
-      )
+    window.getSelection()!.removeAllRanges()
+    fireEvent.mouseUp(para)
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 5))
     })
 
     expect(screen.queryByTestId('artifact-comment-popup')).toBeNull()
@@ -248,13 +276,13 @@ describe('highlight to comment', () => {
   it('parks the batch in the message box when no composer can send it', async () => {
     composer.requestComposerSubmit.mockReturnValue(false)
     render(<ArtifactPreview target={storeArtifactTarget('sif-review-abc123', 'SIF Review')} />)
-    const frame = (await screen.findByTitle('SIF Review')) as HTMLIFrameElement
+    await screen.findByText('Holdings rose 4% this quarter.')
 
-    select(frame, 'alpha')
+    await highlight('Holdings')
     fireEvent.change(await screen.findByPlaceholderText('Comment or ask for an edit…'), { target: { value: 'one' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send all' }))
 
-    expect(composer.requestComposerInsert).toHaveBeenCalledWith(expect.stringContaining('1. On "alpha"'), { mode: 'block' })
+    expect(composer.requestComposerInsert).toHaveBeenCalledWith(expect.stringContaining('1. On "Holdings"'), { mode: 'block' })
   })
 })

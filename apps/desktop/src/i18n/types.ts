@@ -2805,6 +2805,7 @@ export interface Translations extends NoticeTranslations {
     sendAll: string
     removeComment: string
     commentsInComposer: string
+    slideLabel: (n: number) => string
   }
 
   sidebar: {

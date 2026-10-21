@@ -3114,7 +3114,8 @@ export const zhOverrides = {
     comments: count => `${count} 条评论`,
     sendAll: '全部发送',
     removeComment: '删除评论',
-    commentsInComposer: '已添加到消息框，准备好后发送。'
+    commentsInComposer: '已添加到消息框，准备好后发送。',
+    slideLabel: n => `幻灯片 ${n}`
   },
 
   sidebar: {
