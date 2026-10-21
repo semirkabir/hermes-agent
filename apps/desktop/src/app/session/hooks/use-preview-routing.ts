@@ -1,6 +1,7 @@
 import type { GatewayEvent } from '@hermes/shared'
 import { useCallback } from 'react'
 
+import { isStoreArtifactId, selectStoreArtifactVersion, storeArtifactTarget } from '@/lib/artifact-store'
 import { gatewayEventCompletedFileDiff } from '@/lib/gateway-events'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { reachablePreviewUrl } from '@/lib/preview-reach'
@@ -105,10 +106,28 @@ export function usePreviewRouting({ baseHandleGatewayEvent, currentCwd, requestG
         // session that is NOT visible anywhere still can't yank the pane
         // open (offer, don't hijack). Routes through the same normalizer as
         // the file browser so URLs, localhost, and file paths all resolve.
-        const { url, label } = asRecord(event.payload)
+        const { artifact, artifact_version: artifactVersion, url, label } = asRecord(event.payload)
         const target = typeof url === 'string' ? url.trim() : ''
+        const onScreen = !event.session_id || sessionIsOnScreen(event.session_id)
 
-        if (target && (!event.session_id || sessionIsOnScreen(event.session_id))) {
+        // A store-backed artifact (hermes-artifacts plugin): open the rail tab
+        // that reads it from the backend and follows new versions. `url` stays
+        // the rendered file path, so an app without this branch still opens it.
+        if (typeof artifact === 'string' && isStoreArtifactId(artifact)) {
+          if (onScreen) {
+            selectStoreArtifactVersion(artifact, typeof artifactVersion === 'number' ? artifactVersion : null)
+            openPreview(
+              storeArtifactTarget(artifact, typeof label === 'string' ? label : undefined),
+              previewOwnerForEvent(event.session_id),
+              event.session_id || undefined,
+              event.session_id ? previewScopeForRuntime(event.session_id) : undefined
+            )
+          }
+
+          return
+        }
+
+        if (target && onScreen) {
           void normalizeOrLocalPreviewTarget(target, $currentCwd.get() || currentCwd || undefined).then(
             async resolved => {
               if (!resolved) {

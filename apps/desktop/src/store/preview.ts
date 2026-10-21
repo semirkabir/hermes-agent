@@ -99,6 +99,10 @@ export interface PreviewTab {
 }
 
 const TABS_STORAGE_KEY = 'hermes.desktop.previewTabs.v2'
+/** Rail id prefix of a store-backed artifact tab (see lib/artifact-store). */
+const STORE_ARTIFACT_TAB_PREFIX = 'artifact:store:'
+
+const isStoreArtifactTab = (tab: PreviewTab) => tab.id.startsWith(STORE_ARTIFACT_TAB_PREFIX)
 /** Superseded by the tab list above; cleared so it can't leak forever. */
 const LEGACY_SESSION_REGISTRY_KEY = 'hermes.desktop.sessionPreviews.v1'
 
@@ -117,9 +121,10 @@ function isPreviewTarget(value: unknown): value is PreviewTarget {
   )
 }
 
-// Artifact tabs are never written (their registry is memory-only), so a
-// restored artifact row is stale storage — drop it rather than reviving a tab
-// with nothing behind it.
+// Registry artifact tabs are never written (their registry is memory-only), so
+// a restored one is stale storage — drop it rather than reviving a tab with
+// nothing behind it. Store-backed artifact tabs (`artifact:store:<id>`) read
+// from the backend and restore like file tabs.
 function isPreviewTab(value: unknown): value is PreviewTab {
   if (!value || typeof value !== 'object') {
     return false
@@ -127,7 +132,11 @@ function isPreviewTab(value: unknown): value is PreviewTab {
 
   const r = value as Record<string, unknown>
 
-  return typeof r.id === 'string' && (r.id.startsWith('file:') || r.id.startsWith('url:')) && isPreviewTarget(r.target)
+  return (
+    typeof r.id === 'string' &&
+    (r.id.startsWith('file:') || r.id.startsWith('url:') || r.id.startsWith(STORE_ARTIFACT_TAB_PREFIX)) &&
+    isPreviewTarget(r.target)
+  )
 }
 
 function isPdfFileTarget(target: PreviewTarget): boolean {
@@ -214,7 +223,7 @@ const tabsByProfile = loadTabsByProfile()
 function persistableTabs(tabs: PreviewTab[]): PreviewTab[] {
   return tabs.filter(
     tab =>
-      tab.target.kind !== 'artifact' &&
+      (tab.target.kind !== 'artifact' || isStoreArtifactTab(tab)) &&
       !tab.target.transient &&
       !(tab.target.previewKind === 'html' && tab.target.dataUrl)
   )

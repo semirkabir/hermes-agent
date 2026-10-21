@@ -6,6 +6,16 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { artifactDownloadName, type ArtifactKind } from '@/lib/artifact-detect'
+import {
+  $storeArtifactRevision,
+  $storeArtifactVersion,
+  fetchStoreArtifactView,
+  selectStoreArtifactVersion,
+  storeArtifactDownload,
+  storeArtifactIdOf,
+  type StoreArtifactView,
+  watchStoreArtifactChanges
+} from '@/lib/artifact-store'
 import { downloadTextFile } from '@/lib/download-text'
 import { ChevronLeft, ChevronRight, Download, ExternalLink } from '@/lib/icons'
 import { $artifactRegistry, $artifactVersionSelection, findArtifact, selectArtifactVersion } from '@/store/artifacts'
@@ -173,6 +183,18 @@ function VersionStepper({
  * registry, so an open tab picks up new versions as the model iterates.
  */
 export function ArtifactPreview({ onClose, target }: { onClose?: () => void; target: PreviewTarget }) {
+  const storeId = storeArtifactIdOf(target)
+
+  // Store-backed artifacts (saved by the agent through the hermes-artifacts
+  // plugin) read from the backend; registry artifacts read from memory.
+  if (storeId) {
+    return <StoreArtifactPreview artifactId={storeId} onClose={onClose} title={target.label} />
+  }
+
+  return <RegistryArtifactPreview onClose={onClose} target={target} />
+}
+
+function RegistryArtifactPreview({ onClose, target }: { onClose?: () => void; target: PreviewTarget }) {
   const { t } = useI18n()
   const copy = t.artifactPreview
   const artifactId = target.url
@@ -262,6 +284,159 @@ export function ArtifactPreview({ onClose, target }: { onClose?: () => void; tar
           <ArtifactLiveView content={version.content} kind={record.kind} title={record.title} />
         ) : (
           <SourceView language={SOURCE_LANGUAGE_BY_KIND[record.kind] ?? record.language} text={version.content} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+type StoreLoad =
+  | { error: string; status: 'error' }
+  | { status: 'loading' }
+  | { status: 'ready'; view: StoreArtifactView }
+
+/**
+ * A store-backed artifact tab. The backend owns the content: the tab fetches
+ * `/api/plugins/hermes-artifacts/item/<id>/view` and re-fetches whenever the
+ * gateway broadcasts `plugin.hermes-artifacts.changed` for this id, so the
+ * agent saving a new version updates an open tab in place. Rendered HTML runs
+ * in the same scripts-only, opaque-origin sandbox as registry artifacts.
+ */
+function StoreArtifactPreview({
+  artifactId,
+  onClose,
+  title
+}: {
+  artifactId: string
+  onClose?: () => void
+  title: string
+}) {
+  const { t } = useI18n()
+  const copy = t.artifactPreview
+  const pinnedVersion = useStore($storeArtifactVersion)[artifactId] ?? null
+  const revision = useStore($storeArtifactRevision)[artifactId] ?? 0
+  const [load, setLoad] = useState<StoreLoad>({ status: 'loading' })
+  const [retry, setRetry] = useState(0)
+  const [userMode, setUserMode] = useState<PreviewViewMode | null>(null)
+
+  useEffect(() => {
+    watchStoreArtifactChanges()
+  }, [])
+
+  useEffect(() => {
+    setUserMode(null)
+  }, [artifactId])
+
+  useEffect(() => {
+    let active = true
+
+    // Keep showing the current view while a newer version loads (no flash);
+    // only a first load shows the loading state.
+    setLoad(current => (current.status === 'ready' && current.view.id === artifactId ? current : { status: 'loading' }))
+
+    fetchStoreArtifactView(artifactId, pinnedVersion)
+      .then(view => {
+        if (active) {
+          setLoad({ status: 'ready', view })
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setLoad({ error: error instanceof Error ? error.message : String(error), status: 'error' })
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [artifactId, pinnedVersion, revision, retry])
+
+  if (load.status === 'loading') {
+    return <PreviewEmptyState body={title} title={t.common.loading} />
+  }
+
+  if (load.status === 'error') {
+    return (
+      <PreviewEmptyState
+        body={load.error}
+        primaryAction={{ label: t.common.retry, onClick: () => setRetry(value => value + 1) }}
+        secondaryAction={onClose ? { label: t.common.close, onClick: onClose } : undefined}
+        title={copy.missingTitle}
+        tone="warning"
+      />
+    )
+  }
+
+  const { view } = load
+  const modes: PreviewViewMode[] = ['rendered', 'source']
+  const mode = userMode && modes.includes(userMode) ? userMode : modes[0]!
+  const versionNumbers = view.versions.map(item => item.version)
+  const versionIndex = Math.max(0, versionNumbers.indexOf(view.selected_version))
+  const download = storeArtifactDownload(view)
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-transparent" data-artifact-id={view.id}>
+      <PreviewModeSwitcher
+        active={mode}
+        modes={modes}
+        onSelect={setUserMode}
+        trailing={
+          <>
+            <VersionStepper
+              current={versionIndex}
+              onSelect={index => {
+                const next = versionNumbers[index]
+
+                selectStoreArtifactVersion(view.id, next == null || next === view.version ? null : next)
+              }}
+              total={versionNumbers.length}
+            />
+            <CopyButton
+              appearance="inline"
+              className="h-5 px-1 opacity-70 hover:opacity-100"
+              iconClassName="size-3"
+              label={copy.copyContent}
+              showLabel={false}
+              text={view.content}
+            />
+            <Tip label={copy.download}>
+              <button
+                aria-label={copy.download}
+                className={HEADER_BUTTON_CLASS}
+                onClick={() => downloadTextFile(download.name, view.content, download.mimeType)}
+                type="button"
+              >
+                <Download className="size-3" />
+              </button>
+            </Tip>
+            {window.hermesDesktop && (
+              <Tip label={copy.openInBrowser}>
+                <button
+                  aria-label={copy.openInBrowser}
+                  className={HEADER_BUTTON_CLASS}
+                  onClick={() =>
+                    void openHtmlInBrowser(view.html).catch(error => notifyError(error, copy.openInBrowserFailed))
+                  }
+                  type="button"
+                >
+                  <ExternalLink className="size-3" />
+                </button>
+              </Tip>
+            )}
+          </>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {mode === 'rendered' ? (
+          <iframe
+            className="block size-full border-0"
+            key={`${view.id}@${view.selected_version}`}
+            sandbox="allow-scripts"
+            srcDoc={view.html}
+            title={view.title}
+          />
+        ) : (
+          <SourceView language={view.source_ext === 'md' ? 'markdown' : 'html'} text={view.content} />
         )}
       </div>
     </div>
