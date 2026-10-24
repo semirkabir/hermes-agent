@@ -39,7 +39,7 @@ import {
 } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 
-import { avatarColor, blobatarSvg, botAppearance, BotFace } from './avatar'
+import { avatarColor, botAppearance, BotFace, DITHER_SHAPE } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
 import { AvatarPicker } from './avatar-picker'
 import { $selectedBot } from './bot-state'
@@ -138,7 +138,7 @@ export function CreateAgentDialog({ open, onClose, onConfigureModel, roster }: C
   const [description, setDescription] = useState('')
   // Default shapes mode: deterministic blob face drawn from the agent's name
   // (falls back to the legacy shape vocabulary on older SDKs).
-  const [shape, setShape] = useState(blobatarSvg ? 'blobatar' : 'circle')
+  const [shape, setShape] = useState(DITHER_SHAPE)
   const [color, setColor] = useState<null | string>(null)
   const [image, setImage] = useState<null | string>(null)
   const [advanced, setAdvanced] = useState(false)
@@ -269,7 +269,7 @@ export function CreateAgentDialog({ open, onClose, onConfigureModel, roster }: C
     setName('')
     setTitle('')
     setDescription('')
-    setShape(blobatarSvg ? 'blobatar' : 'circle')
+    setShape(DITHER_SHAPE)
     setColor(null)
     setImage(null)
     setAdvanced(false)

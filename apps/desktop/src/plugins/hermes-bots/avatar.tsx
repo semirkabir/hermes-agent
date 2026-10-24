@@ -8,6 +8,7 @@
 
 import * as sdk from '@hermes/plugin-sdk'
 import { profileColor } from '@hermes/plugin-sdk'
+import { generateDitherAvatar } from 'dither-avatar'
 
 import type { AvatarAppearance, AvatarShape, BotMeta, FaceMood } from './types'
 
@@ -24,7 +25,7 @@ const createBudgetedLoop = typeof sdk === 'undefined' ? undefined : sdk.createBu
 // solids remain render-only so any bot that picked one during the experiments
 // keeps its look.
 const AVATAR_SHAPES: AvatarShape[] = ['circle', 'squircle', 'pill', 'triangle', 'hexagon', 'cloud', 'drop']
-export const AVATAR_PICKER_SHAPES = ['circle', 'blob', 'squircle', 'pill', 'triangle', 'hexagon', 'cloud', 'drop']
+export const AVATAR_PICKER_SHAPES = ['dither', 'circle', 'blob', 'squircle', 'pill', 'triangle', 'hexagon', 'cloud', 'drop']
 
 /** xorshift PRNG seeded from a string — stable across sessions/platforms. */
 function sigilRng(text: string) {
@@ -112,6 +113,29 @@ export function defaultShapeFor(name: string): AvatarShape {
   }
 
   return AVATAR_SHAPES[hash % AVATAR_SHAPES.length]
+}
+
+// ── dither avatars (default for new agents and for bots with no saved look) ──
+//   'dither'         — two-tone Bayer-dithered square seeded by the bot's NAME
+//                      (the profile name), so the phone app draws the same one
+//   'dither:<seed>'  — seed locked to something else
+// Rendered by dither-avatar (MIT). Static: the face clock leaves it alone.
+
+export const DITHER_SHAPE = 'dither'
+
+export function isDitherShape(shape: null | string | undefined) {
+  return shape === DITHER_SHAPE || (typeof shape === 'string' && shape.startsWith(`${DITHER_SHAPE}:`))
+}
+
+/** The dither avatar as SVG markup at `size`, tagged so the roster PNG backfill
+ *  (`svg[data-bot-face=…]`) still finds it. */
+export function ditherMarkup(shape: string, name: string, size: number) {
+  const seed = shape.startsWith(`${DITHER_SHAPE}:`) ? shape.slice(DITHER_SHAPE.length + 1) || name : name
+
+  return generateDitherAvatar(seed || 'agent').replace(
+    /^<svg width="\d+" height="\d+"/,
+    `<svg data-bot-face=${JSON.stringify(name)} width="${size}" height="${size}" viewBox="0 0 200 200" style="display:block"`
+  )
 }
 
 // ── blobatar shapes mode (default for new agents) ───────────────────────────
@@ -1013,6 +1037,25 @@ export function BotFace({ shape, color, image, size = 36, name = 'agent', mood =
     )
   }
 
+  if (isDitherShape(shape)) {
+    return (
+      <span
+        aria-hidden
+        dangerouslySetInnerHTML={{
+          __html: ditherMarkup(shape, name, size)
+        }}
+        style={{
+          width: size,
+          height: size,
+          display: 'block',
+          lineHeight: 0,
+          borderRadius: '22%',
+          overflow: 'hidden'
+        }}
+      />
+    )
+  }
+
   // Blobatar shapes: the library draws the whole face (body + eyes + its own
   // name-derived palette). Inline SVG via innerHTML so the roster PNG
   // backfill's `svg[data-bot-face=…]` query still finds it; the math clock
@@ -1150,7 +1193,7 @@ export function botAppearance(name: string, meta: BotMeta | null | undefined): A
   }
 
   return {
-    shape: meta?.shape || defaultShapeFor(name),
+    shape: meta?.shape || DITHER_SHAPE,
     color: meta?.color || profileColor(name),
     image: meta?.image || null
   }

@@ -1720,6 +1720,17 @@ export { MessageTextContent } from '@/components/assistant-ui/markdown-text'
 /** The oversized Collapse lettering an empty chat is titled with — core writes
  *  "HERMES AGENT" with it, a `chat.empty` contribution writes its own name. */
 export { Wordmark } from '@/components/chat/wordmark'
+/** Dithered surfaces (Paper Shaders' ordered-dither shader, Apache-2.0) for loading
+ *  states and backgrounds. Theme tokens work as colors and follow theme changes;
+ *  reduced motion draws one still frame; no WebGL falls back to the CSS checker. */
+export {
+  DitherField,
+  type DitherFieldProps,
+  DitherLoading,
+  type DitherLoadingProps,
+  type DitherShape,
+  type DitherType
+} from '@/components/dither/dither-field'
 /** Pane placement roles. `'floating'` is the one NON-tiling value: the pane is
  *  excluded from the layout tree and rendered as a fixed, draggable card above
  *  it — it takes no width from any zone, has no tab, and can't be docked.
@@ -1802,15 +1813,15 @@ export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
+
+// -- contracts ----------------------------------------------------------------
+
 /** Mount-scoped contribution: while the rendering component is mounted, its
  *  children render in the target area's slot; unmount disposes it. Use for
  *  page-owned chrome (a page's titlebar control leaves with the page) —
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
-
-// -- contracts ----------------------------------------------------------------
-
 /** Settings ▸ Plugins entries (`ctx.registerSettingsPage`); `pluginSettingsHref` deep-links one. */
 export { pluginSettingsHref, SETTINGS_PLUGINS_AREA } from '@/contrib/settings-pages'
 export type { Contribution } from '@/contrib/types'
@@ -1889,6 +1900,7 @@ export { catalogProviderMatches } from '@/lib/model-options'
  *  hand-picked color still sits with the generated ones; reach for them
  *  instead of literal hex, which can't follow the theme. */
 export { PROFILE_SWATCHES, profileColor, profileColorSoft } from '@/lib/profile-color'
+
 /** The shared client itself, for invalidation OUTSIDE React (e.g. a
  *  `ctx.socket` frame invalidating a query). Inside components keep using
  *  `useQueryClient`. */
@@ -1897,7 +1909,6 @@ export { queryClient } from '@/lib/query-client'
 /** Compact labels for the reasoning levels exported from @hermes/shared, so a
  *  plugin surfacing a thinking depth uses the same spelling as the app. */
 export { reasoningEffortLabel } from '@/lib/reasoning-effort'
-
 /** The app's own gateway-readiness evaluation (setup.status +
  *  setup.runtime_check, reconciled) — pass `host.request`. Don't hand-roll
  *  readiness from raw RPC shapes. */
@@ -2010,6 +2021,9 @@ export { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
  *  renderer for rasterization; React component for live rendering. */
 export { blobatar as blobatarSvg } from 'blobatar/blob'
 export { Blobatar } from 'blobatar/react'
+/** Deterministic two-tone Bayer-dithered avatars from a seed (dither-avatar, MIT).
+ *  Returns a 200x200 `<svg>` string; the hue pair is `ditherAvatarColors(seed)`. */
+export { generateColors as ditherAvatarColors, generateDitherAvatar as ditherAvatarSvg } from 'dither-avatar'
 /** Plugin-local reactive state (share between a trigger and its panel, poll
  *  loops, cross-component signals) — the same primitive `host.state` uses. */
 export { atom, computed } from 'nanostores'

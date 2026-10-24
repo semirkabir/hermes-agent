@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import DOMPurify from 'dompurify'
 import { useEffect, useMemo, useState } from 'react'
 
+import { DitherLoading } from '@/components/dither/dither-field'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
@@ -353,7 +354,7 @@ function StoreArtifactPreview({
   }, [artifactId, pinnedVersion, revision, retry])
 
   if (load.status === 'loading') {
-    return <PreviewEmptyState body={title} title={t.common.loading} />
+    return <DitherLoading className="bg-background" detail={title} label={t.common.loading} />
   }
 
   if (load.status === 'error') {
