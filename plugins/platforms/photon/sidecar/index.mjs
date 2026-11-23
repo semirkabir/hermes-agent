@@ -46,7 +46,7 @@
 // On SIGINT/SIGTERM the sidecar calls `app.stop()` (3s graceful) before
 // exiting. Logs go to stderr; Python supervises restart.
 //
-// Requires spectrum-ts 8.x — pinned exactly in package.json because the SDK
+// Requires spectrum-ts 12.x — pinned exactly in package.json because the SDK
 // ships breaking majors; see README "Upgrading spectrum-ts".
 //
 // Env vars (required):
@@ -65,7 +65,6 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { once } from "node:events";
-import { patchSpectrumTs } from "./patch-spectrum-mixed-attachments.mjs";
 import { chooseSendFormat } from "./send-format.mjs";
 import {
   classifyProbeRejection,
@@ -278,25 +277,7 @@ if (!projectId || !projectSecret || !sharedToken) {
 }
 
 // Lazy-load spectrum-ts so a missing install fails with a clear message
-// instead of a cryptic module-resolution error during import. Apply Hermes'
-// pinned-sdk compatibility patch first so existing installs self-heal at
-// runtime, not only during npm postinstall.
-try {
-  const patchResult = patchSpectrumTs();
-  if (patchResult.patched) {
-    console.error(
-      `photon-sidecar: spectrum mixed attachment patch applied: ${patchResult.file}`
-    );
-  }
-} catch (e) {
-  console.error(
-    "photon-sidecar: spectrum mixed attachment patch failed. " +
-      "Run `npm install` inside plugins/platforms/photon/sidecar/ or " +
-      "upgrade the Photon sidecar patch for the pinned spectrum-ts version. " +
-      "Original error: " +
-      (e && e.stack ? e.stack : String(e))
-  );
-}
+// instead of a cryptic module-resolution error during import.
 let Spectrum,
   imessage,
   attachment,
@@ -306,6 +287,7 @@ let Spectrum,
   spectrumRichlink,
   spectrumTyping,
   spectrumPoll,
+  spectrumEdit,
   imessageEffect;
 try {
   ({
@@ -317,6 +299,7 @@ try {
     markdown: spectrumMarkdown,
     richlink: spectrumRichlink,
     typing: spectrumTyping,
+    edit: spectrumEdit,
   } = await import("spectrum-ts"));
   ({ imessage, effect: imessageEffect } = await import("spectrum-ts/providers/imessage"));
 } catch (e) {
@@ -581,6 +564,26 @@ async function normalizeContent(content) {
       options: Array.isArray(content.options)
         ? content.options.map((o) => o?.title ?? "")
         : [],
+    };
+  }
+  // iMessage reply (threaded reply): spectrum wraps the actual content + target.
+  // Flatten so Python sees: type="reply", text=inner text, reply_to_message_id /
+  // reply_to_text from the hydrated target Message. LOCAL PATCH — re-apply after
+  // any index.mjs rewrite (lost once on 2026-08-25 ~21:25 voice-bundle edit).
+  if (content.type === "reply") {
+    const inner = content.content;
+    const target = content.target;
+    const innerNorm = inner ? await normalizeContent(inner) : { type: "unknown" };
+    return {
+      type: "reply",
+      text: innerNorm.text || "",
+      reply_to_message_id: target?.id ?? null,
+      // Same hydration spectrum gives reaction targets — lets Python inject
+      // `[Replying to: "..."]` context so the model knows WHICH message.
+      reply_to_text: reactionTargetText(target),
+      reply_to_direction: target?.direction ?? null,
+      // normalized inner content (media etc.) for future handling
+      content: innerNorm,
     };
   }
   return { type: content.type || "unknown" };
@@ -972,6 +975,40 @@ const server = http.createServer(async (req, res) => {
   if (!tokenOk(req.headers["x-hermes-sidecar-token"])) {
     return unauthorized(res);
   }
+  // LOCAL PATCH (imessage-tapback-reactions skill): out-of-process callers
+  // (TUI / cron curl / photon-react plugin) need the latest inbound message
+  // id per space to target tapbacks. The gateway adapter tracks its own copy
+  // internally; this endpoint only serves external callers. Re-applied after
+  // every image update via ensure-photon-patch.
+  if (req.method === "GET" && req.url === "/last-inbound") {
+    const out = {};
+    for (const [id, m] of knownMessages) {
+      if (m?.direction !== "inbound") continue;
+      const sid = m.space?.id || "?";
+      if (!out[sid] || (m.timestamp || 0) > (out[sid].timestamp || 0)) {
+        out[sid] = { id, text: JSON.stringify(m.content ?? "").slice(0, 80), timestamp: m.timestamp || 0 };
+      }
+    }
+    return ok(res, { spaces: out });
+  }
+  if (req.method === "GET" && req.url === "/last-sent") {
+    const out = {};
+    for (const [id, m] of knownMessages) {
+      if (m?.direction !== "outbound") continue;
+      const sid = m.space?.id || "?";
+      if (!out[sid] || (m.timestamp || 0) > (out[sid].timestamp || 0)) {
+        out[sid] = { id, text: JSON.stringify(m.content ?? "").slice(0, 80), timestamp: m.timestamp || 0 };
+      }
+    }
+    return ok(res, { spaces: out });
+  }
+  // Debug/ops: list known space ids (used by the e2e edit-verification
+  // script — values are real here even though logs mask them).
+  if (req.method === "GET" && req.url === "/debug-spaces") {
+    const out = [];
+    for (const id of knownSpaces.keys()) out.push(id);
+    return ok(res, { spaces: out });
+  }
   // Long-lived inbound NDJSON stream.
   if (req.method === "GET" && req.url === "/inbound") {
     return handleInbound(req, res);
@@ -1055,29 +1092,48 @@ const server = http.createServer(async (req, res) => {
       // spectrum-ts infers name + MIME from the file extension; pass
       // overrides only when Hermes supplied them so a known-good
       // inference isn't clobbered with an empty string.
+      let sendPath = path;
       const opts = {};
       if (name) opts.name = name;
       if (mimeType) opts.mimeType = mimeType;
-      const builder =
-        kind === "voice"
-          ? voice(path, Object.keys(opts).length ? opts : undefined)
-          : attachment(path, Object.keys(opts).length ? opts : undefined);
-
-      const result = await space.send(builder);
-
-      // iMessage delivers the caption as a separate bubble; send it
-      // after the media so the attachment renders first.
-      if (caption && typeof caption === "string") {
-        try {
-          await space.send(spectrumText(caption));
-        } catch (e) {
-          console.error(
-            "photon-sidecar: attachment sent but caption failed: " +
-              (e && e.stack ? e.stack : String(e))
-          );
-        }
+      let cleanup = async () => {};
+      if (kind === "voice") {
+        // Materialize a unique M4A before voice() so converted TTS bytes,
+        // filename, and MIME identity cannot collide with inbound CAF.
+        const { prepareVoiceAttachment } = await import("./voice-send.mjs");
+        const prepared = await prepareVoiceAttachment(path);
+        sendPath = prepared.path;
+        opts.name = prepared.opts.name;
+        opts.mimeType = prepared.opts.mimeType;
+        cleanup = prepared.cleanup;
       }
-      return ok(res, { messageId: result?.id || null });
+      try {
+        const builder =
+          kind === "voice"
+            ? voice(sendPath, opts)
+            : attachment(
+                sendPath,
+                Object.keys(opts).length ? opts : undefined
+              );
+
+        const result = await space.send(builder);
+
+        // iMessage delivers the caption as a separate bubble; send it
+        // after the media so the attachment renders first.
+        if (caption && typeof caption === "string") {
+          try {
+            await space.send(spectrumText(caption));
+          } catch (e) {
+            console.error(
+              "photon-sidecar: attachment sent but caption failed: " +
+                (e && e.stack ? e.stack : String(e))
+            );
+          }
+        }
+        return ok(res, { messageId: result?.id || null });
+      } finally {
+        await cleanup();
+      }
     }
     if (req.url === "/react") {
       const { spaceId, messageId, emoji } = body || {};
@@ -1101,6 +1157,110 @@ const server = http.createServer(async (req, res) => {
         MAX_REACTION_HANDLES
       );
       return ok(res, { reactionId: handle.id ?? null });
+    }
+    if (req.url === "/send-reply") {
+      // LOCAL PATCH (humanize): send text as a native threaded reply to a
+      // specific message. Uses spectrum's message.reply() — the target must
+      // be resolvable (live cache first, then getMessage round trip).
+      const { spaceId, messageId, text, format = "text" } = body || {};
+      if (!spaceId || !messageId || typeof text !== "string") {
+        return badRequest(res, "spaceId, messageId and text are required");
+      }
+      if (format !== "text" && format !== "markdown") {
+        return badRequest(res, "format must be text or markdown");
+      }
+      const space = await resolveSpace(spaceId);
+      // LOCAL PATCH (2026-08-27): resolve target defensively — a stale or
+      // unknown reply target must never 500 the whole send. Fall back to a
+      // plain (non-threaded) send so the reply still lands.
+      let target = null;
+      try {
+        target =
+          knownMessages.get(messageId) ?? (await space.getMessage(messageId));
+      } catch (e) {
+        target = null;
+      }
+      const builder =
+        format === "markdown" ? spectrumMarkdown(text) : spectrumText(text);
+      if (target) {
+        try {
+          const result = await target.reply(builder);
+          return ok(res, { messageId: result?.id ?? null, threaded: true });
+        } catch (e) {
+          // reply() can still fail upstream (e.g. gRPC NotFound) — fall through
+          // to a plain send rather than erroring out.
+        }
+      }
+      const fallback = await space.send(builder);
+      return ok(res, {
+        messageId: fallback?.id ?? null,
+        threaded: false,
+        fallback: true,
+      });
+    }
+    if (req.url === "/unsend-message") {
+      // LOCAL PATCH (photon unsend): recall one of OUR OWN messages.
+      // spectrum-ts/iMessage rejects unsending inbound or foreign messages —
+      // surface that as a 4xx, not a crash. Restart-recovery: if the id is
+      // not in the live cache, rehydrate by id before attempting the unsend.
+      const { spaceId, messageId } = body || {};
+      if (!spaceId || !messageId) {
+        return badRequest(res, "spaceId and messageId are required");
+      }
+      const space = await resolveSpace(spaceId);
+      let target = null;
+      try {
+        target = knownMessages.get(messageId) ?? (await space.getMessage(messageId));
+      } catch (e) {
+        target = null;
+      }
+      if (!target) {
+        return badRequest(res, "message not found");
+      }
+      try {
+        await space.unsend(target);
+      } catch (e) {
+        return badRequest(
+          res,
+          "not unsent: " + (e && e.message ? e.message : String(e))
+        );
+      }
+      knownMessages.delete(messageId);
+      return ok(res, { unsent: messageId });
+    }
+    if (req.url === "/edit") {
+      // LOCAL PATCH (2026-08-26): edit a previously sent iMessage.
+      // Apple allows edits within 15 min, max 5 edits. Uses the official
+      // spectrum-ts `edit(content, target)` builder through space.send() —
+      // the same path the framework uses internally. `target` must be an
+      // outbound message record ({id, direction:"outbound"}); we try to
+      // rehydrate the real record via space.getMessage() when the message
+      // is no longer in the live cache.
+      const { spaceId, messageId, text } = body || {};
+      if (!spaceId || !messageId || typeof text !== "string" || !text) {
+        return badRequest(res, "spaceId, messageId, and text are required");
+      }
+      const space = await resolveSpace(spaceId);
+      let target = null;
+      try {
+        target = knownMessages.get(messageId) ?? (await space.getMessage(messageId));
+      } catch (e) {
+        target = null;
+      }
+      if (!target) {
+        // Fall back to a minimal outbound message record so edits still
+        // work for ids the sidecar never cached (e.g. pre-cache sends).
+        target = { id: messageId, direction: "outbound" };
+      }
+      try {
+        await space.send(spectrumEdit(spectrumText(text), target));
+        return ok(res, { messageId });
+      } catch (e) {
+        console.error(
+          "photon-sidecar: edit failed: " + (e && e.stack ? e.stack : String(e))
+        );
+        return badRequest(res, "edit failed: " + (e && e.message ? e.message : String(e)));
+      }
     }
     if (req.url === "/unreact") {
       const { spaceId, messageId, reactionId } = body || {};
