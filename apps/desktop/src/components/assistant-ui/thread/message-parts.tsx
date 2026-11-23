@@ -21,7 +21,12 @@ import { ThemeTool } from '@/components/assistant-ui/theme-picker/theme-tool'
 import { AgentDeliveryNotice, deliveryTargetFromCommand } from '@/components/assistant-ui/thread/agent-delivery'
 import { TimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { DelegateTool } from '@/components/assistant-ui/tool/delegate'
-import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
+import {
+  registerToolSpanParts,
+  ToolFallback,
+  ToolGroupSlot,
+  useAbsorbedIntoToolSpan
+} from '@/components/assistant-ui/tool/fallback'
 import { parseMaybeObject, toolCallFailed } from '@/components/assistant-ui/tool/fallback-model'
 import { formatElapsed, useElapsedSeconds, useMeasuredDuration } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
@@ -371,12 +376,16 @@ const ThinkingDisclosure: FC<{
 // `thread.isRunning` directly would flicker shimmer/timer on every old
 // assistant whenever the external-store runtime clears+reimports its
 // repository (one ref-identity bump per streaming delta).
-const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; startIndex: number }> = ({
-  children,
-  endIndex,
-  startIndex
-}) => {
+const ReasoningAccordionGroup: FC<{
+  children?: ReactNode
+  endIndex: number
+  /** Drawn by a tool span's owner (see `tool-span.ts`) rather than in place. */
+  inSpan?: boolean
+  startIndex: number
+}> = ({ children, endIndex, inSpan = false, startIndex }) => {
   const showReasoning = useStore($showReasoning)
+  // Thinking between tool calls rides inside that stretch's tool line.
+  const absorbed = useAbsorbedIntoToolSpan(startIndex)
   const messageId = useAuiState(s => s.message.id)
   const messageRunning = useAuiState(s => s.message.status?.type === 'running')
 
@@ -417,7 +426,7 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     }, undefined)
   )
 
-  if (!hasContent || !showReasoning) {
+  if (!hasContent || !showReasoning || (absorbed && !inSpan)) {
     return null
   }
 
@@ -481,3 +490,5 @@ export const MESSAGE_PARTS_COMPONENTS = {
   ToolGroup: ToolGroupSlot,
   tools: { Fallback: ChainToolFallback }
 } as const
+
+registerToolSpanParts({ components: MESSAGE_PARTS_COMPONENTS, Thought: ReasoningAccordionGroup })

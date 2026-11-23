@@ -626,3 +626,60 @@ describe('tool lifecycle timestamps', () => {
     )
   })
 })
+
+// Thinking between steps (hidden or not) used to split one stretch of work
+// into "Used 1 tool / Used 4 tools / Used 1 tool / Used 1 tool". The whole
+// stretch up to the next visible text is one line now.
+function thinkingBetweenStepsMessage(): ThreadMessage {
+  const call = (id: string, command: string) => ({
+    type: 'tool-call',
+    toolCallId: id,
+    toolName: 'terminal',
+    args: { command },
+    argsText: JSON.stringify({ command }),
+    result: { output: 'ok' }
+  })
+
+  const thought = (text: string) => ({ type: 'reasoning', text })
+
+  return {
+    id: 'assistant-thinking-between',
+    role: 'assistant',
+    content: [
+      thought('check the code first'),
+      call('t1', 'grep a'),
+      thought('now the styles'),
+      call('t2', 'grep b'),
+      call('t3', 'grep c'),
+      call('t4', 'grep d'),
+      call('t5', 'grep e'),
+      thought('one more'),
+      call('t6', 'build'),
+      thought('install'),
+      call('t7', 'install'),
+      { type: 'text', text: 'Built. Installing it now.' },
+      call('t8', 'swap')
+    ],
+    status: { type: 'complete', reason: 'stop' },
+    createdAt,
+    metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: {} }
+  } as unknown as ThreadMessage
+}
+
+describe('tool calls with thinking between them', () => {
+  it('draws one line for the whole stretch, split only by visible text', async () => {
+    const { container } = render(<GroupHarness message={thinkingBetweenStepsMessage()} />)
+
+    await waitFor(() => expect(container.querySelectorAll('[data-tool-summary]')).toHaveLength(1))
+    expect(container.querySelector('[data-tool-summary]')?.textContent).toMatch(/7 commands/)
+    // The lone call after the text stays its own row.
+    expect(container.querySelectorAll('[data-tool-summary],[data-tool-row]')).toHaveLength(2)
+  })
+
+  it('opens to every call in order', async () => {
+    const { container } = render(<GroupHarness message={thinkingBetweenStepsMessage()} />)
+
+    fireEvent.click(await waitFor(() => container.querySelector('[data-tool-summary] button') as HTMLElement))
+    await waitFor(() => expect(container.querySelectorAll('[data-tool-row]')).toHaveLength(8))
+  })
+})

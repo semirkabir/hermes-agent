@@ -1,6 +1,6 @@
 import { type ThreadMessage } from '@assistant-ui/react'
 import type { GatewayEvent } from '@hermes/shared'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { renderMessageStream } from '@/app/session/hooks/use-message-stream/test-harness'
@@ -145,11 +145,11 @@ describe('tool feed visibility policy', () => {
     expect(container.querySelector('[data-tool-summary]')).not.toBeNull()
   })
 
-  it('still shows tool chrome when reasoning blocks are on', async () => {
+  it('still shows tool chrome when reasoning blocks are on, with the thinking folded into the run', async () => {
     const { container } = render(<Harness />)
 
-    expect(await screen.findByText(/Explored 2 files/)).toBeTruthy()
-    expect(container.querySelector('[data-slot="aui_thinking-disclosure"]')).not.toBeNull()
+    fireEvent.click(await screen.findByText(/Explored 2 files/))
+    await waitFor(() => expect(container.querySelector('[data-slot="aui_thinking-disclosure"]')).not.toBeNull())
   })
 
   it('silences the feed on an explicit off while reasoning blocks stay on', async () => {

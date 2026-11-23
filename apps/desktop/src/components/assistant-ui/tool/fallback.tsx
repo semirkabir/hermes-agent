@@ -1,10 +1,11 @@
 'use client'
 
-import { type ToolCallMessagePartProps, useAuiState } from '@assistant-ui/react'
+import { MessagePrimitive, type ToolCallMessagePartProps, useAuiState } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
 import { motion, useReducedMotion } from 'motion/react'
 import {
   Children,
+  type ComponentProps,
   createContext,
   type FC,
   Fragment,
@@ -83,6 +84,7 @@ import {
 } from './fallback-model'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 import { ToolRunTicker } from './run-ticker'
+import { type SpanPartKind, splitSpanItems, toolSpanAt } from './tool-span'
 
 // `true` when a ToolEntry is rendered inside an embedding wrapper that owns
 // the per-row chrome (timer / preview). The flat ToolGroupSlot sets this
@@ -1081,16 +1083,46 @@ function toolGroupKey(toolName: string, args: ToolCallMessagePartProps['args']):
   return setThemeCall(toolName, args) ? SET_THEME_TOOL : toolName
 }
 
+/** What a span renders its parts with. message-parts registers these at load
+ *  (it imports this file, so it hands them over rather than being imported). */
+export interface ToolSpanParts {
+  components: ComponentProps<typeof MessagePrimitive.PartByIndex>['components']
+  Thought: FC<PropsWithChildren<{ endIndex: number; inSpan: true; startIndex: number }>>
+}
+
+let spanParts: null | ToolSpanParts = null
+
+export function registerToolSpanParts(parts: null | ToolSpanParts) {
+  spanParts = parts
+}
+
+/** True when a reasoning group sits inside a tool span and its owner draws it. */
+export function useAbsorbedIntoToolSpan(startIndex: number): boolean {
+  const showToolActivity = useStore($showToolActivity)
+
+  return useAuiState(state => Boolean(spanParts) && showToolActivity && Boolean(toolSpanAt(state.message.parts, startIndex)))
+}
+
+function spanPartKey(part: { type: string } & Record<string, unknown>): string {
+  if (part.type === 'tool-call') {
+    return toolGroupKey(String(part.toolName ?? ''), part.args as ToolCallMessagePartProps['args'])
+  }
+
+  return part.type === 'reasoning' ? SPAN_THOUGHT : SPAN_BLANK
+}
+
+const SPAN_THOUGHT = '\u0001thought'
+const SPAN_BLANK = '\u0001blank'
+
 /**
- * A range of consecutive tool calls, split into the cards that must stay on
- * screen and the runs of activity between them.
+ * Every tool call between two pieces of visible text, as one line.
  *
- * assistant-ui hands the whole adjacent range over as one group; what belongs
- * together is a narrower question than adjacency. A diff or a question for the
- * user is the point of the turn and renders in place, while the reads and
- * commands around it collapse into a line. Splitting here rather than asking
- * for different ranges keeps the decision next to the rendering that depends
- * on it.
+ * assistant-ui hands over only *adjacent* tool calls, so thinking between
+ * steps (often hidden) used to split one stretch of work into "Used 1 tool",
+ * "Used 4 tools", "Used 1 tool"... The first group in a span (see
+ * `tool-span.ts`) now draws the whole span: diffs and questions for the user
+ * still render in place as cards, everything else folds into runs, and the
+ * thinking rides inside the run it belongs to.
  */
 export const ToolGroupSlot: FC<PropsWithChildren<{ endIndex: number; startIndex: number }>> = ({
   children,
@@ -1102,14 +1134,29 @@ export const ToolGroupSlot: FC<PropsWithChildren<{ endIndex: number; startIndex:
   // Joined rather than returned as an array: assistant-ui compares selector
   // results with `Object.is` and re-runs them on every store update, so a
   // fresh array would re-render the whole group on every text delta.
-  const toolNameKey = useAuiState(state =>
-    state.message.parts
-      .slice(Math.max(0, startIndex), endIndex + 1)
-      .map(part => (part.type === 'tool-call' ? toolGroupKey(part.toolName, part.args) : ''))
-      .join('\u0000')
-  )
+  const spanKey = useAuiState(state => {
+    const parts = state.message.parts as unknown as ({ type: string } & Record<string, unknown>)[]
+    const span = spanParts ? toolSpanAt(parts, startIndex) : null
 
-  const items = useMemo(() => splitRunItems(toolNameKey.split('\u0000')), [toolNameKey])
+    if (!span) {
+      return `own\u0002${startIndex}\u0002${parts
+        .slice(Math.max(0, startIndex), endIndex + 1)
+        .map(part => (part.type === 'tool-call' ? spanPartKey(part) : ''))
+        .join('\u0000')}`
+    }
+
+    if (span.firstTool !== startIndex) {
+      return 'absorbed'
+    }
+
+    return `span\u0002${span.start}\u0002${parts
+      .slice(span.start, span.end + 1)
+      .map(spanPartKey)
+      .join('\u0000')}`
+  })
+
+  const [mode, base, keyList] = spanKey.split('\u0002') as [string, string | undefined, string | undefined]
+  const keys = useMemo(() => (keyList ?? '').split('\u0000'), [keyList])
   const rows = Children.toArray(children)
 
   // The run scaffold ("Explored N files") is part of the tool feed and follows
@@ -1119,15 +1166,73 @@ export const ToolGroupSlot: FC<PropsWithChildren<{ endIndex: number; startIndex:
     return children
   }
 
+  if (mode === 'absorbed') {
+    return null
+  }
+
+  if (mode === 'own' || !spanParts) {
+    const items = splitRunItems(keys)
+
+    return (
+      <ToolEmbedContext.Provider value={false}>
+        {items.map(item =>
+          item.kind === 'card' ? (
+            <Fragment key={`card:${item.index}`}>{rows[item.index]}</Fragment>
+          ) : (
+            <ToolRun endIndex={startIndex + item.end} key={`run:${item.start}`} startIndex={startIndex + item.start}>
+              {rows.slice(item.start, item.end + 1)}
+            </ToolRun>
+          )
+        )}
+      </ToolEmbedContext.Provider>
+    )
+  }
+
+  const { components, Thought } = spanParts
+  const start = Number(base)
+
+  const kinds = keys.map<SpanPartKind>(key =>
+    key === SPAN_THOUGHT || key === SPAN_BLANK ? 'neutral' : !key || isCardTool(key) ? 'card' : 'tool'
+  )
+
+  const part = (offset: number) => {
+    const index = start + offset
+    const key = keys[offset]
+
+    if (key === SPAN_BLANK) {
+      return null
+    }
+
+    const element = <MessagePrimitive.PartByIndex components={components} index={index} key={`part:${index}`} />
+
+    return key === SPAN_THOUGHT ? (
+      <Thought endIndex={index} inSpan key={`thought:${index}`} startIndex={index}>
+        {element}
+      </Thought>
+    ) : (
+      element
+    )
+  }
+
+  const range = (from: number, to: number) => {
+    const out: ReactNode[] = []
+
+    for (let offset = from; offset <= to; offset += 1) {
+      out.push(part(offset))
+    }
+
+    return out.filter(Boolean)
+  }
+
   return (
     <ToolEmbedContext.Provider value={false}>
-      {items.map(item =>
-        item.kind === 'card' ? (
-          <Fragment key={`card:${item.index}`}>{rows[item.index]}</Fragment>
-        ) : (
-          <ToolRun endIndex={startIndex + item.end} key={`run:${item.start}`} startIndex={startIndex + item.start}>
-            {rows.slice(item.start, item.end + 1)}
+      {splitSpanItems(kinds).map(item =>
+        item.kind === 'run' ? (
+          <ToolRun endIndex={start + item.end} key={`run:${start + item.start}`} startIndex={start + item.start}>
+            {range(item.start, item.end)}
           </ToolRun>
+        ) : (
+          <Fragment key={`${item.kind}:${start + item.index}`}>{part(item.index)}</Fragment>
         )
       )}
     </ToolEmbedContext.Provider>
