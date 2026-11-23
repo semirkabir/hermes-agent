@@ -27,6 +27,7 @@ import {
 import type { ChatEmptyProps, PluginContext, ProfileGroupRoute } from '@hermes/plugin-sdk'
 
 import { startFaceClock, stopFaceClock } from './avatar'
+import { BOT_RAIL_WIDTH, BotsRail } from './bot-rail'
 import {
   $botChatFocused,
   $botsPaneVisible,
@@ -464,6 +465,9 @@ export default {
         hideOnly: true,
         tabTitle: () => <LocalizedTabTitle select={t => t.common.bots} />,
         tabTitleText: () => translateNow('common.bots'),
+        // Collapsed sidebar: the bots stay on screen as a column of faces.
+        railContent: () => <BotsRail />,
+        railWidth: BOT_RAIL_WIDTH,
         dock: {
           pane: 'sessions',
           pos: 'center',

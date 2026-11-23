@@ -103,7 +103,7 @@ import { PaneBody } from './pane-body'
 import { usePanelTitlebar } from './panel-titlebar'
 import { tabStripVisibleForZone } from './strip-visibility'
 import { useActiveTabVisible } from './tab-strip-scroll'
-import { paneChrome } from './track-model'
+import { MINIMIZED_TRACK, minimizedTrackFor, paneChrome, type TrackContext } from './track-model'
 import { useZoneHeaderLayout } from './zone-header-layout'
 
 /** Right-click zone menu: the tab verbs (close this / others / to the right /
@@ -359,23 +359,32 @@ function CompactZoneTabs({ activeId, belowControls, closeable, newTab, node, tab
 
 interface CollapsedZoneRailProps {
   activeId: string
-  children: ReactNode
+  /** One rail tab per pane without `railContent`; `railIcon` is its icon, if any. */
+  children: (paneId: string, railIcon: ReactNode) => ReactNode
   menu: Omit<ComponentProps<typeof ZoneMenu>, 'children'>
+  /** The zone, its contributions and the panes it shows. A pane's `railContent`
+   *  renders first, in place of its tab, and the rail widens to `railWidth`. */
+  rail: { node: GroupNode; paneFor: TrackContext['paneFor']; shown: string[] }
   railSide: 'left' | 'right'
 }
 
-function CollapsedZoneRail({ activeId, children, menu, railSide }: CollapsedZoneRailProps) {
+function CollapsedZoneRail({ activeId, children, menu, rail, railSide }: CollapsedZoneRailProps) {
   const { t } = useI18n()
+  const chrome = (paneId: string) => paneChrome(rail.paneFor(paneId))
+  const trackWidth = minimizedTrackFor(rail.node, rail.paneFor)
+  const width = trackWidth === MINIMIZED_TRACK ? undefined : trackWidth
 
   return (
     <ZoneMenu {...menu}>
       <div
         className={cn(
-          'flex h-full min-h-7 w-7 min-w-7 shrink-0 cursor-pointer select-none flex-col items-stretch bg-(--ui-sidebar-surface-background)',
+          'flex h-full min-h-7 shrink-0 cursor-pointer select-none flex-col items-stretch bg-(--ui-sidebar-surface-background)',
+          !width && 'w-7 min-w-7',
           // Strip line faces the content the zone collapsed away from.
           railSide === 'right' ? PANE_TAB_STRIP_LINE_LEFT : PANE_TAB_STRIP_LINE_RIGHT
         )}
         onClick={() => restoreTreePane(activeId)}
+        style={width ? { minWidth: width, width } : undefined}
         title={t.zones.restore}
       >
         <div
@@ -383,7 +392,24 @@ function CollapsedZoneRail({ activeId, children, menu, railSide }: CollapsedZone
           className="flex min-h-0 flex-col overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="tablist"
         >
-          {children}
+          {rail.shown
+            .filter(paneId => chrome(paneId).railContent)
+            .map(paneId => (
+              <div
+                className="border-b border-(--ui-stroke-quaternary)"
+                data-rail-content={paneId}
+                key={`rail:${paneId}`}
+              >
+                <ContribBoundary id={`rail:${paneId}`}>{chrome(paneId).railContent?.()}</ContribBoundary>
+              </div>
+            ))}
+          {rail.shown
+            .filter(paneId => !chrome(paneId).railContent)
+            .map(paneId => {
+              const icon = chrome(paneId).railIcon
+
+              return children(paneId, icon ? <Codicon aria-hidden name={icon} size={15} /> : null)
+            })}
         </div>
       </div>
     </ZoneMenu>
@@ -691,8 +717,8 @@ export function TreeGroup({
           the horizontal strip, just `vertical`. Click a tab to restore +
           activate; click anywhere else on the rail to restore. */}
       {verticalCollapse && (
-        <CollapsedZoneRail activeId={activeId} menu={zoneMenu} railSide={railSide}>
-          {shown.map(paneId => {
+        <CollapsedZoneRail activeId={activeId} menu={zoneMenu} rail={{ node, paneFor, shown }} railSide={railSide}>
+          {(paneId, railIcon) => {
             const closeable = closeableTab(paneId)
 
             return (
@@ -714,10 +740,10 @@ export function TreeGroup({
                 side={railSide}
                 vertical
               >
-                <PaneTabLabel>{tabLabel(paneId)}</PaneTabLabel>
+                <PaneTabLabel>{railIcon ?? tabLabel(paneId)}</PaneTabLabel>
               </PaneTab>
             )
-          })}
+          }}
         </CollapsedZoneRail>
       )}
 

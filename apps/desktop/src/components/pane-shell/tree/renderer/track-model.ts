@@ -136,6 +136,15 @@ interface PaneChrome extends PaneSizing {
    *  this and the readers resolve it at menu-open / drag-start time. Absent,
    *  they fall back to `title`. */
   tabTitleText?: () => string
+  /** What this pane shows in its zone's COLLAPSED rail instead of the vertical
+   *  text tab — the Bots pane's column of avatars. Rendered inside the rail;
+   *  its own clicks should stop propagation (the rail's click restores). */
+  railContent?: () => React.ReactNode
+  /** Width of the collapsed rail when a pane in the zone supplies
+   *  `railContent` (the text-only rail is 28px). */
+  railWidth?: string
+  /** Codicon name drawn instead of the vertical text label in a collapsed rail. */
+  railIcon?: string
 }
 
 export const paneChrome = (c: Contribution | undefined) => (c?.data ?? {}) as PaneChrome
@@ -214,6 +223,20 @@ export const cssMax = (values: (string | null | undefined)[]): string | undefine
  *  are both 28px thick. */
 export const MINIMIZED_TRACK = '1.75rem'
 
+/** A minimized zone's rail thickness: the `railWidth` of its first pane that
+ *  renders `railContent`, else the plain 28px strip (always, for a split). */
+export function minimizedTrackFor(node: LayoutNode, paneFor: TrackContext['paneFor']): string {
+  for (const id of node.type === 'group' ? node.panes : []) {
+    const chrome = paneChrome(paneFor(id))
+
+    if (chrome.railContent && chrome.railWidth) {
+      return chrome.railWidth
+    }
+  }
+
+  return MINIMIZED_TRACK
+}
+
 /**
  * In an all-fixed split, the last uncapped track may absorb leftover space
  * (terminal/logs stacked at 38vh with nothing else to fill the column). A
@@ -250,7 +273,7 @@ export function fixedTrackSize(node: LayoutNode, axis: 'row' | 'column', ctx: Tr
     // panes' declared widths — otherwise the outer track keeps reserving the
     // full sidebar width and the collapsed rail floats in a dead column.
     if (node.minimized) {
-      return MINIMIZED_TRACK
+      return minimizedTrackFor(node, ctx.paneFor)
     }
 
     const overrideKey = axis === 'row' ? 'widthOverride' : 'heightOverride'
