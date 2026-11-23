@@ -11,7 +11,9 @@ codex transport consumes that declaration.
 All tests seed the plugin's in-memory cache directly — no network.
 """
 
+import json
 import sys
+import time
 
 import pytest
 
@@ -68,6 +70,20 @@ class TestProfileContract:
         monkeypatch.setattr(mod, "_disk_checked", True)
         monkeypatch.setattr(mod, "_warm_efforts_async", lambda: None)
         assert profile.supported_reasoning_efforts("grok-4.6") is None
+
+    def test_disk_mirror_loads_before_first_catalog_refresh(self, monkeypatch, tmp_path):
+        profile, mod = _router_plugin_module()
+        cache_path = tmp_path / "router_catalog.json"
+        cache_path.write_text(
+            json.dumps({"ts": time.time(), "efforts": {"grok-4.6": ["low", "high"]}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(mod, "_disk_path", lambda: cache_path)
+        monkeypatch.setattr(mod, "_efforts_cache", None)
+        monkeypatch.setattr(mod, "_disk_checked", False)
+        monkeypatch.setattr(mod, "_warm_efforts_async", lambda: None)
+
+        assert profile.supported_reasoning_efforts("grok-4.6") == ("low", "high")
 
     def test_parse_efforts_catalog_shapes(self):
         _, mod = _router_plugin_module()

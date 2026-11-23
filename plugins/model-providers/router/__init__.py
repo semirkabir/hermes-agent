@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 ROUTER_DEFAULT_BASE_URL = "https://api.router.com/v1"
 
+# Router model catalogs change infrequently; keep stale entries available while refreshing.
+_DISK_TTL_SECONDS = 24 * 60 * 60
+
 #: model id -> accepted effort levels. ``[]`` = model accepts NO reasoning
 #: fields; absent = unknown (callers keep their defaults).
 _efforts_cache: Optional[dict[str, list[str]]] = None
