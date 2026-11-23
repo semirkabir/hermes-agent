@@ -32,6 +32,7 @@ import {
 
 import { avatarColor, botAppearance } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
+import { hoverState, useHover } from './bot-hover'
 import {
   $botChatFocused,
   $focusedBotOwner,
@@ -156,6 +157,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
   const groupKeys = useValue($activeGroupMemberKeys)
   const botMood = botWorkingMood(bot, focusedOwner, turnBusy, activeConnectionId, Date.now(), groupKeys)
   const motion = useAvatarState(botMood)
+  const hover = useHover()
   // Status keys off the canonical Bot Chat — the very session this row opens,
   // so the dot and the click can never describe different conversations.
   const canonicalSessionId = botCanonicalSessionId(bot)
@@ -254,7 +256,11 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
         event.dataTransfer.effectAllowed = 'move'
         $draggingBot.set(rosterKey)
       }}
-      onPointerEnter={warm}
+      onPointerEnter={() => {
+        warm()
+        hover.onPointerEnter()
+      }}
+      onPointerLeave={hover.onPointerLeave}
     >
       <div className={cn('shrink-0', !sourceStatus.available && 'grayscale opacity-60')}>
         <LiveBotFace
@@ -264,7 +270,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
           name={bot.name}
           shape={shape}
           size={34}
-          state={motion}
+          state={hoverState(motion, hover.hovered)}
         />
       </div>
       <div className="min-w-0 flex-1">

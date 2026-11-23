@@ -1,7 +1,9 @@
-import { cn, host, Tip, useValue } from '@hermes/plugin-sdk'
+import { cn, host, useValue } from '@hermes/plugin-sdk'
+import { useState } from 'react'
 
 import { avatarColor, botAppearance } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
+import { BotHoverCard, hoverState, useHover } from './bot-hover'
 import { $botChatFocused, $focusedBotOwner, $selectedRosterKey, focusedRosterOwner } from './bot-state'
 import { $botMeta, $lastRoster, botRosterKey, useRoster } from './data'
 import { $groupChatWorkspace } from './group-chat'
@@ -63,9 +65,11 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
   const motion = useAvatarState(mood)
   const isActive = botRowOwnsWorkspace(bot, activeGroup, botChatFocused, focusedOwner, selectedRosterKey)
   const label = displayName(bot, meta)
+  const { hovered, onPointerEnter, onPointerLeave } = useHover()
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null)
 
   return (
-    <Tip label={label} side="right">
+    <>
       <button
         aria-label={label}
         aria-pressed={isActive}
@@ -75,12 +79,17 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
           isActive && 'bg-(--ui-control-hover-background)'
         )}
         data-bot-rail-face={bot.name}
+        onBlur={onPointerLeave}
         onClick={event => {
           // The rail sits inside the collapsed zone, whose own click restores
           // the sidebar. Opening a bot must not also unfold it.
           event.stopPropagation()
           void openRosterBot(bot, { intent: event.metaKey || event.ctrlKey ? 'tab' : 'in-place' })
         }}
+        onFocus={onPointerEnter}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+        ref={setAnchor}
         type="button"
       >
         <LiveBotFace
@@ -90,7 +99,7 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
           name={bot.name}
           shape={shape}
           size={28}
-          state={motion}
+          state={hoverState(motion, hovered)}
         />
         {mood !== 'idle' && (
           <span
@@ -99,6 +108,7 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
           />
         )}
       </button>
-    </Tip>
+      <BotHoverCard anchor={anchor} bot={bot} open={hovered} />
+    </>
   )
 }

@@ -510,6 +510,7 @@ export type AvatarState =
   | 'drowsy'
   | 'surprised'
   | 'turntable'
+  | 'greet'
 
 interface StateDef {
   clips: string[]
@@ -552,7 +553,9 @@ export const STATES: Record<AvatarState, StateDef> = {
   sad: { clips: ['droop'] },
   drowsy: { clips: ['doze'] },
   surprised: { clips: ['sway'], face: 'surprised' },
-  turntable: { clips: ['turntable'] }
+  turntable: { clips: ['turntable'] },
+  // Hovered while idle: a happy hop, then a wiggle, looping while the pointer stays.
+  greet: { clips: ['hop', 'wiggle'], face: 'happy' }
 }
 
 export const STATE_NAMES = Object.keys(STATES) as AvatarState[]
