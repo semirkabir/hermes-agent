@@ -167,13 +167,18 @@ function partPaintWeight(part: unknown, measure: (parts: readonly unknown[]) => 
     return 0
   }
 
+  // A diff is the one surface that scales: `FileDiffPanel` mounts a row per
+  // line, and a big patch really is the expensive thing in the turn. Edits now
+  // fold into runs, but their diff can still be open, so price it by size.
+  if (isFileEditTool(toolName)) {
+    return measure([part])
+  }
+
   if (!isCardTool(toolName)) {
     return COLLAPSED_ROW_WEIGHT
   }
 
-  // A diff is the one card that scales: `FileDiffPanel` mounts a row per line,
-  // and a big patch really is the expensive thing in the turn.
-  return isFileEditTool(toolName) ? measure([part]) : CARD_WEIGHT
+  return CARD_WEIGHT
 }
 
 /**

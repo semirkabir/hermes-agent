@@ -32,7 +32,7 @@ import { mcpTargets, toolLabels } from '@/lib/connector-tools'
 import { generatedImageFromResult } from '@/lib/generated-images'
 import { separateGluedReasoningBlocks } from '@/lib/reasoning-blocks'
 import { isTodoToolName } from '@/lib/todos'
-import { type CardToolName, isCardTool, isCardToolName } from '@/lib/tool-render-class'
+import { type CardToolName, isCardTool, isCardToolName, isFileEditTool } from '@/lib/tool-render-class'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { onboardingChatStore } from '@/store/onboarding-session'
@@ -192,8 +192,8 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
 
   // The tool feed (reads, searches, commands) follows display.tool_progress,
   // never show_reasoning. Cards, approvals, and failed calls the user must act
-  // on remain regardless.
-  if (!showToolActivity && !failedCallNeedsUser(props) && !isCardTool(props.toolName)) {
+  // on remain regardless, and so do file edits: the diff is the turn's deliverable.
+  if (!showToolActivity && !failedCallNeedsUser(props) && !isCardTool(props.toolName) && !isFileEditTool(props.toolName)) {
     return null
   }
 

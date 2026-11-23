@@ -397,20 +397,30 @@ describe('settled tool run', () => {
   })
 })
 
-// A diff is what the user reviews, so it is never what gets summarized away.
-// It stays on screen at the point in the turn where it happened, with the
-// activity either side of it collapsing around it.
+// A file edit is activity like a read or a command: it folds into the turn's
+// one run summary rather than splitting it in two.
 describe('a file edit among ordinary activity', () => {
-  it('stays visible between the two runs it interrupted', async () => {
+  it('folds into the one run summary instead of splitting it', async () => {
+    // Read, edit, read is ONE line, not summary/diff/summary.
     const { container } = render(<GroupHarness message={editBetweenRunsMessage()} />)
 
-    await screen.findByText('Explored 2 files')
+    const summaries = await waitFor(() => {
+      const found = container.querySelectorAll('[data-tool-summary]')
+      expect(found).toHaveLength(1)
 
-    const shape = [...container.querySelectorAll('[data-tool-summary],[data-tool-row]')].map(node =>
-      node.hasAttribute('data-tool-summary') ? 'summary' : 'row'
-    )
+      return found
+    })
 
-    expect(shape).toEqual(['summary', 'row', 'summary'])
+    expect(summaries[0].textContent).toBe('Edited wiring.tsx, explored 3 files, ran 1 command')
+    expect(container.querySelectorAll('[data-tool-summary],[data-tool-row]')).toHaveLength(1)
+  })
+
+  it('keeps the edit and its diff reachable from the expanded run', async () => {
+    const { container } = render(<GroupHarness message={editBetweenRunsMessage()} />)
+
+    fireEvent.click(await screen.findByText('Edited wiring.tsx, explored 3 files, ran 1 command'))
+
+    await waitFor(() => expect(container.querySelector('[data-tool-row][data-file-edit]')).not.toBeNull())
   })
 })
 

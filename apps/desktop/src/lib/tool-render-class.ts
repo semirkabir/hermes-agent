@@ -16,11 +16,13 @@ export function isFileEditTool(toolName: string): boolean {
 }
 
 // Tools that draw their own surface and must never be folded into a run's
-// summary. Two kinds, for the same reason — the thing on screen IS the point:
+// summary, because the thing on screen IS the point:
 //
-//   - File edits are the deliverable, not scaffolding. The diff is what the
-//     user reviews, so it stays visible at its place in the turn, live and
-//     settled, the way a PR shows its changes.
+//   - File edits are NOT cards: they fold
+//     into the run like any other activity, so a turn that reads, edits and
+//     runs reads as one line ("Edited 1 file, ran 2 commands"). The diff is
+//     still one tap away in the expanded run, and the changed-files list at
+//     the end of the turn still carries every edit.
 //   - `clarify`, `image_generate` and `delegate_task` bypass ToolEntry to
 //     render their own markup: a question the user has to answer, an image
 //     they asked for, the several agents a fan-out is running.
@@ -50,7 +52,7 @@ export function isCardToolName(toolName: string): toolName is CardToolName {
 export const CONNECTION_CARD_KEY = 'manage_connections:card'
 
 export function isCardTool(toolName: string): boolean {
-  return isCardToolName(toolName) || toolName === CONNECTION_CARD_KEY || isFileEditTool(toolName)
+  return isCardToolName(toolName) || toolName === CONNECTION_CARD_KEY
 }
 
 // Activity tools that render nothing at all: `todo` parts are hoisted to a
