@@ -279,6 +279,11 @@ function toolMeta(name: string): ToolMeta {
   }
 }
 
+/** The glyph a tool's row leads with, for surfaces that show only icons (the tool card's stack). */
+export function toolIconName(name: string): string | undefined {
+  return toolMeta(name).icon
+}
+
 const COUNT_FIELD_KEYS = [
   'count',
   'total',

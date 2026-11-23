@@ -130,6 +130,16 @@ export const SETTINGS_MANIFEST = {
     reactions: appearanceSetting('chat-display', ['emoji', 'tapback', 'react', 'reactions'], 'reactions'),
     vibeHearts: appearanceSetting('chat-display', ['hearts', 'vibe', 'celebrate', 'confetti', 'fun'], 'vibeHearts'),
     toolView: appearanceSetting('chat-display', ['tool display', 'technical'], 'toolView'),
+    toolCallStyle: appearanceSetting(
+      'chat-display',
+      ['tool calls', 'tool card', 'cards', 'compact', 'approval'],
+      'toolCallStyle'
+    ),
+    toolCardsExpandLive: appearanceSetting(
+      'chat-display',
+      ['tool calls', 'tool card', 'expand', 'collapse', 'running', 'ticker', 'live'],
+      'toolCardsExpandLive'
+    ),
     hideCodeDiffs: appearanceSetting(
       'chat-display',
       ['code', 'diff', 'patch', 'file edits', 'inline', 'added', 'removed'],

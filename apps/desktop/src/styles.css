@@ -4301,3 +4301,25 @@ html[data-hermes-desktop-host='browser'] [data-slot='sidebar-container'] {
   background: none;
   color: var(--err-ink);
 }
+
+/* Tool card (Settings > Appearance > Chat display > Tool Call Style: Cards).
+   One run of tool calls under a plain header line, no frame. */
+[data-tool-card] {
+  --tool-card-fill: var(--ui-widget-surface-background, var(--ui-chat-surface-background));
+  --tool-card-icon-fill: color-mix(in srgb, var(--ui-text-primary) 7%, var(--tool-card-fill));
+  /* With no frame, the icon ring separates the badges against the chat surface itself. */
+  --tool-card-ring: var(--ui-bg-chrome, var(--tool-card-fill));
+  /* A step under the body text (label ~0.8x, meta ~0.75x), following Chat text size. */
+  --tool-card-text: max(10.5px, calc(var(--conversation-text-font-size, 0.8125rem) * 0.8));
+  --tool-card-meta: max(10px, calc(var(--conversation-text-font-size, 0.8125rem) * 0.75));
+  --tool-card-success: var(--ui-green, #1a7f37);
+  --tool-card-warning: var(--ui-yellow, #d29922);
+  --tool-card-failed-tint: color-mix(in srgb, var(--color-destructive) 6%, transparent);
+  --tool-card-failed-pill: color-mix(in srgb, var(--color-destructive) 15%, transparent);
+  --tool-card-error-text: color-mix(in srgb, var(--color-destructive) 75%, var(--ui-text-tertiary));
+}
+
+:root.dark [data-tool-card] {
+  --tool-card-success: var(--ui-green, #3fb950);
+  --tool-card-failed-tint: color-mix(in srgb, var(--color-destructive) 8%, transparent);
+}

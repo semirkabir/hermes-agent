@@ -21,9 +21,10 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { ChevronDown, Loader2 } from '@/lib/icons'
+import { ChevronDown, Loader2, ShieldCheck } from '@/lib/icons'
 import { releaseApprovalKey } from '@/lib/keybinds/approval-keys'
 import { cn } from '@/lib/utils'
+import { $approvalHostedInline } from '@/store/approval-host'
 import { $gateway } from '@/store/gateway'
 import { reconnectAction } from '@/store/gateway-reconnect'
 import { notifyError } from '@/store/notifications'
@@ -44,6 +45,7 @@ import { isToolCallPart, summarizeToolRun } from './run-summary'
 
 type ApprovalChoice = 'once' | 'session' | 'always' | 'deny'
 export const ApprovalPlacementContext = createContext<'inline' | 'floating'>('inline')
+const NO_REQUESTS: ApprovalRequest[] = []
 
 // One transcript-owned host for the session. Execution rows never mount,
 // register or re-home this queue, including the first delayed tool.start.
@@ -51,8 +53,12 @@ export const PendingApprovalStack: FC = () => {
   const { t } = useI18n()
   const placement = useContext(ApprovalPlacementContext)
   const sessionId = useStore(useSessionView().$runtimeId)
-  const requests = useStore(useMemo(() => sessionApprovalRequests(sessionId), [sessionId]))
+  const queued = useStore(useMemo(() => sessionApprovalRequests(sessionId), [sessionId]))
   const total = useStore(useMemo(() => sessionApprovalStackSize(sessionId), [sessionId]))
+  // A live tool card is showing this decision inside its run; asking twice
+  // would split one answer across two surfaces.
+  const hostedInline = useStore(useMemo(() => $approvalHostedInline(sessionId), [sessionId]))
+  const requests = hostedInline ? NO_REQUESTS : queued
   const reduced = useReducedMotion()
 
   return (
@@ -235,33 +241,56 @@ interface ApprovalCardProps {
   stack: CardStackAction
 }
 
-const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }) => {
+const SYNTHETIC_COMMAND_RE = /^<[^>]+> \(/
+
+// What a request lets the user choose, and what it asks them to judge.
+function approvalShape(request: ApprovalRequest) {
+  // false when the backend won't honor a permanent allow → hide "Always allow".
+  const allowPermanent = request.allowPermanent !== false
+  const choices = request.choices ?? (request.smartDenied ? ['once', 'deny'] : undefined)
+  const allowSession = choices ? choices.includes('session') : true
+  const allowAlways = choices ? choices.includes('always') : allowPermanent
+  const hasCommand = request.command.trim().length > 0
+  // A plugin `approve` rule escalates through the same gate with a synthetic
+  // display target (`<tool> (plugin approval rule)`) while the real command /
+  // change lives in `description` — the user approves a label they cannot act
+  // on otherwise. Show the description whenever the command is missing or one
+  // of these synthetic labels; a real command keeps rendering as the command.
+  const showsDescription = !hasCommand || SYNTHETIC_COMMAND_RE.test(request.command.trim())
+  const details = showsDescription ? request.description.trim() : request.command.trim()
+
+  return { allowAlways, allowSession, details, hasMoreOptions: allowSession || allowAlways, showsDescription }
+}
+
+/**
+ * Answering a request: one reply in flight, focus handed back afterwards.
+ * `depart` wraps the send (the stack animates its card out around it; the
+ * inline row in a tool card just sends).
+ */
+function useApprovalResponder(
+  request: ApprovalRequest,
+  depart: (send: () => Promise<void>) => Promise<void>,
+  hostRef: { current: HTMLElement | null }
+) {
   const { t } = useI18n()
   const copy = t.assistant.approval
   const gateway = useStore($gateway)
   const [submitting, setSubmitting] = useState<ApprovalChoice | null>(null)
   const submittingRef = useRef(false)
-  // "Always allow" persists the pattern to ~/.hermes/config.yaml permanently, so
-  // it goes through a confirm step rather than firing straight from the menu.
-  const [confirmAlways, setConfirmAlways] = useState(false)
-
-  const present = stack.active
-  const busy = submitting !== null || !present || stack.busy
   // Answering with the pointer moves focus onto the card, and the card then
   // unmounts, which parks focus on <body> — where type-to-focus routes the next
   // keystrokes into the chat composer. For a computer_use flow the agent may
   // have just aimed its input at another pane (terminal, preview), so the
   // approval hands focus back to whatever held it before the press (#113839).
   const focusOrigin = useRef<HTMLElement | null>(null)
-  const cardRef = useRef<HTMLElement | null>(null)
 
   const rememberFocusOrigin = useCallback(() => {
     const active = document.activeElement
 
-    if (active instanceof HTMLElement && active !== document.body && !cardRef.current?.contains(active)) {
+    if (active instanceof HTMLElement && active !== document.body && !hostRef.current?.contains(active)) {
       focusOrigin.current = active
     }
-  }, [])
+  }, [hostRef])
 
   const restoreFocusOrigin = useCallback(() => {
     const origin = focusOrigin.current
@@ -271,28 +300,10 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
 
     // Only when the answer itself is what stranded focus — never steal from a
     // surface the user moved to while the reply was in flight.
-    if (origin?.isConnected && (!active || active === document.body || cardRef.current?.contains(active))) {
+    if (origin?.isConnected && (!active || active === document.body || hostRef.current?.contains(active))) {
       origin.focus({ preventScroll: true })
     }
-  }, [])
-
-  // false when the backend won't honor a permanent allow → hide "Always allow".
-  const allowPermanent = request.allowPermanent !== false
-  const choices = request.choices ?? (request.smartDenied ? ['once', 'deny'] : undefined)
-  const allowSession = choices ? choices.includes('session') : true
-  const allowAlways = choices ? choices.includes('always') : allowPermanent
-  const hasMoreOptions = allowSession || allowAlways
-  const hasCommand = request.command.trim().length > 0
-  // A plugin `approve` rule escalates through the same gate with a synthetic
-  // display target (`<tool> (plugin approval rule)`) while the real command /
-  // change lives in `description` — the user approves a label they cannot act
-  // on otherwise. Show the description whenever the command is missing or one
-  // of these synthetic labels; a real command keeps rendering as the command.
-  const SYNTHETIC_COMMAND_RE = /^<[^>]+> \(/
-
-  const showsDescription = !hasCommand || SYNTHETIC_COMMAND_RE.test(request.command.trim())
-
-  const details = showsDescription ? request.description.trim() : request.command.trim()
+  }, [hostRef])
 
   const respond = useCallback(
     async (choice: ApprovalChoice) => {
@@ -312,7 +323,7 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
       setSubmitting(choice)
 
       try {
-        await stack.depart(() => sendApproval(request, choice))
+        await depart(() => sendApproval(request, choice))
         restoreFocusOrigin()
       } catch (error) {
         releaseApprovalKey()
@@ -321,8 +332,76 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
         setSubmitting(null)
       }
     },
-    [copy.gatewayDisconnected, copy.sendFailed, gateway, request, restoreFocusOrigin, stack]
+    [copy.gatewayDisconnected, copy.sendFailed, depart, gateway, request, restoreFocusOrigin]
   )
+
+  return { rememberFocusOrigin, respond, submitting }
+}
+
+// "Always allow" persists the pattern to ~/.hermes/config.yaml permanently, so
+// it goes through a confirm step rather than firing straight from the menu.
+function AlwaysAllowDialog({
+  onConfirm,
+  onOpenChange,
+  open,
+  request
+}: {
+  onConfirm: () => void
+  onOpenChange: (open: boolean) => void
+  open: boolean
+  request: ApprovalRequest
+}) {
+  const { t } = useI18n()
+  const copy = t.assistant.approval
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{copy.alwaysTitle}</DialogTitle>
+          <DialogDescription>{copy.alwaysDescription(request.description)}</DialogDescription>
+        </DialogHeader>
+
+        {request.command.trim() && (
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-2.5 py-1.5 font-mono text-xs leading-snug text-foreground">
+            {request.command.trim()}
+          </pre>
+        )}
+
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)} size="sm" variant="ghost">
+            {t.common.cancel}
+          </Button>
+          <Button
+            onClick={() => {
+              onOpenChange(false)
+              onConfirm()
+            }}
+            size="sm"
+            variant="destructive"
+          >
+            {copy.alwaysAllow}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Defer one tick so the menu fully unmounts before the dialog mounts —
+// otherwise Radix's focus-return races the dialog and dismisses it via
+// onInteractOutside.
+const openAfterMenu = (open: () => void) => setTimeout(open, 0)
+
+const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }) => {
+  const { t } = useI18n()
+  const copy = t.assistant.approval
+  const [confirmAlways, setConfirmAlways] = useState(false)
+  const cardRef = useRef<HTMLElement | null>(null)
+  const present = stack.active
+  const { rememberFocusOrigin, respond, submitting } = useApprovalResponder(request, stack.depart, cardRef)
+  const busy = submitting !== null || !present || stack.busy
+  const { allowAlways, allowSession, details, hasMoreOptions, showsDescription } = approvalShape(request)
 
   return (
     <article
@@ -365,14 +444,7 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
                 <DropdownMenuItem onSelect={() => void respond('session')}>{copy.allowSession}</DropdownMenuItem>
               )}
               {allowAlways && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    // Defer one tick so the menu fully unmounts before the dialog
-                    // mounts — otherwise Radix's focus-return races the dialog and
-                    // dismisses it via onInteractOutside.
-                    setTimeout(() => setConfirmAlways(true), 0)
-                  }}
-                >
+                <DropdownMenuItem onSelect={() => openAfterMenu(() => setConfirmAlways(true))}>
                   {copy.alwaysAllowMenu}
                 </DropdownMenuItem>
               )}
@@ -388,36 +460,138 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
         </Button>
       </div>
 
-      <Dialog onOpenChange={setConfirmAlways} open={confirmAlways}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{copy.alwaysTitle}</DialogTitle>
-            <DialogDescription>{copy.alwaysDescription(request.description)}</DialogDescription>
-          </DialogHeader>
+      <AlwaysAllowDialog
+        onConfirm={() => void respond('always')}
+        onOpenChange={setConfirmAlways}
+        open={confirmAlways}
+        request={request}
+      />
+    </article>
+  )
+}
 
-          {request.command.trim() && (
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-chat-surface-background) px-2.5 py-1.5 font-mono text-xs leading-snug text-foreground">
-              {request.command.trim()}
+const sendDirectly = (send: () => Promise<void>) => send()
+
+/**
+ * The pending approval as a row inside a live tool card.
+ *
+ * Same decision as the stack's card: Deny and Allow inline, and Allow for the
+ * session / Always allow (with its confirm step) kept one click away in the
+ * options menu, never removed. It carries the stack's data attributes, so the
+ * approval keys (Enter runs, Escape denies) reach it exactly as they reach the
+ * stack while the stack has stepped aside.
+ */
+export function InlineApprovalRow({
+  position,
+  request,
+  total
+}: {
+  position: number
+  request: ApprovalRequest
+  total: number
+}) {
+  const { t } = useI18n()
+  const copy = t.assistant.approval
+  const cardCopy = t.assistant.tool.card
+  const [confirmAlways, setConfirmAlways] = useState(false)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  const { rememberFocusOrigin, respond, submitting } = useApprovalResponder(request, sendDirectly, rowRef)
+  const busy = submitting !== null
+  const { allowAlways, allowSession, details, hasMoreOptions, showsDescription } = approvalShape(request)
+  const description = request.description.trim()
+
+  const title = showsDescription
+    ? request.command.trim() || copy.commandDetails
+    : description
+      ? description.charAt(0).toUpperCase() + description.slice(1)
+      : copy.command
+
+  return (
+    <div
+      className="min-w-0"
+      data-approval-stack=""
+      data-request-id={request.requestId}
+      data-slot="tool-card-approval"
+      onPointerDownCapture={rememberFocusOrigin}
+      ref={rowRef}
+    >
+      <div className="flex min-w-0 items-start gap-2.5 px-3 py-2" data-stack-active="true">
+        <span className="flex h-5 w-4 shrink-0 items-center justify-center text-(--tool-card-warning)">
+          <Codicon name="terminal" size="1rem" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 truncate text-[13px] leading-5 text-(--ui-text-primary)">{title}</span>
+            {total > 1 && (
+              <span className="shrink-0 text-xs tabular-nums text-(--ui-text-tertiary)">
+                {position} / {total}
+              </span>
+            )}
+          </div>
+          {details.length > 0 && details !== title && (
+            <pre className="m-0 mt-0.5 max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-snug text-(--ui-text-tertiary)">
+              {details}
             </pre>
           )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5" data-slot="tool-approval-actions">
+          <Button
+            className="h-7 rounded-lg px-2.5 text-xs"
+            data-approval-deny=""
+            disabled={busy}
+            onClick={() => void respond('deny')}
+            size="sm"
+            variant="ghost"
+          >
+            {submitting === 'deny' ? <Loader2 className="size-3 animate-spin" /> : cardCopy.deny}
+          </Button>
+          {hasMoreOptions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label={cardCopy.approvalOptions}
+                  className="h-7 rounded-lg px-1.5"
+                  disabled={busy}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                {allowSession && (
+                  <DropdownMenuItem onSelect={() => void respond('session')}>{copy.allowSession}</DropdownMenuItem>
+                )}
+                {allowAlways && (
+                  <DropdownMenuItem onSelect={() => openAfterMenu(() => setConfirmAlways(true))}>
+                    {copy.alwaysAllowMenu}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={() => void respond('deny')} variant="destructive">
+                  {copy.reject}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <Button
+            className="h-7 gap-1 rounded-lg px-2.5 text-xs"
+            data-approval-run=""
+            disabled={busy}
+            onClick={() => void respond('once')}
+            size="sm"
+          >
+            {submitting === 'once' ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+            {cardCopy.allow}
+          </Button>
+        </div>
+      </div>
 
-          <DialogFooter>
-            <Button onClick={() => setConfirmAlways(false)} size="sm" variant="ghost">
-              {t.common.cancel}
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirmAlways(false)
-                void respond('always')
-              }}
-              size="sm"
-              variant="destructive"
-            >
-              {copy.alwaysAllow}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </article>
+      <AlwaysAllowDialog
+        onConfirm={() => void respond('always')}
+        onOpenChange={setConfirmAlways}
+        open={confirmAlways}
+        request={request}
+      />
+    </div>
   )
 }

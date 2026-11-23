@@ -782,6 +782,12 @@ export interface Translations extends NoticeTranslations {
       colorMode: string
       colorModeDesc: string
       toolViewTitle: string
+      toolCallStyleTitle: string
+      toolCallStyleDesc: string
+      toolCallStyleCards: string
+      toolCallStyleCompact: string
+      toolCardsExpandLiveTitle: string
+      toolCardsExpandLiveDesc: string
       toolViewDesc: string
       hideCodeDiffsTitle: string
       hideCodeDiffsDesc: string
@@ -4121,6 +4127,23 @@ export interface Translations extends NoticeTranslations {
       copyFile: string
       copyPath: string
       failedCalls: (count: number) => string
+      card: {
+        using: (count: number) => string
+        used: (count: number) => string
+        waitingApproval: string
+        failedCount: (count: number) => string
+        couldNot: (action: string) => string
+        toolFailed: (tool: string) => string
+        allow: string
+        deny: string
+        approvalOptions: string
+        countLines: (count: number) => string
+        countMatches: (count: number) => string
+        countResults: (count: number) => string
+        countSessions: (count: number) => string
+        countItems: (count: number) => string
+        exitCode: (code: number) => string
+      }
       skillActivity: {
         loading: string
         loaded: string

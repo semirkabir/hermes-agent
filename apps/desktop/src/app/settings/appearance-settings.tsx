@@ -43,7 +43,7 @@ import {
   setTitlebarAppActionsSide,
   type TitlebarAppActionsSide
 } from '@/store/titlebar-app-actions'
-import { $hideCodeDiffs, $toolViewMode, setHideCodeDiffs, setToolViewMode } from '@/store/tool-view'
+import { $hideCodeDiffs, setHideCodeDiffs } from '@/store/tool-view'
 import { $toursEnabled, setToursEnabled } from '@/store/tours'
 import {
   $translucency,
@@ -86,6 +86,7 @@ import { PetSettings } from './pet-settings'
 import { ListRow, RowFootnoteAction, SectionHeading, SettingsContent, ToggleRow } from './primitives'
 import { SETTING_IDS, settingElementId } from './settings-manifest'
 import { TerminalFontSetting } from './terminal-font-setting'
+import { ToolCallSettings } from './tool-call-settings'
 import { useSettingDeepLink } from './use-setting-deep-link'
 
 // display.resume_last_session lives in the backend config record (shared with
@@ -413,8 +414,6 @@ interface AppearanceSettingsProps {
 export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
   const { t, isSavingLocale } = useI18n()
   const { themeName, mode, resolvedMode, availableThemes, setTheme, setMode } = useTheme()
-  const toolViewMode = useStore($toolViewMode)
-  const toolViewShadowed = useStore($modeShadowed('toolViewMode'))
   const hideCodeDiffs = useStore($hideCodeDiffs)
   const hideCodeDiffsShadowed = useStore($modeShadowed('hideCodeDiffs'))
   const hideThreadTimeline = useStore($hideThreadTimeline)
@@ -497,11 +496,6 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
     profiles.find(profile => normalizeProfileKey(profile.name) === activeProfileKey)?.name ?? activeProfileKey
 
   const modeOptions = MODE_OPTIONS.map(({ id, icon }) => ({ icon, id, label: t.settings.modeOptions[id].label }))
-
-  const toolOptions = [
-    { id: 'product', label: a.product },
-    { id: 'technical', label: a.technical }
-  ] as const
 
   const sessionDensityOptions = [
     { id: 'compact', label: a.sessionDensityCompact },
@@ -1022,23 +1016,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
             />
           )}
 
-          {show('chat-display') && (
-            <ListRow
-              action={
-                <SegmentedControl
-                  onChange={id => {
-                    triggerHaptic('selection')
-                    setToolViewMode(id)
-                  }}
-                  options={toolOptions}
-                  value={toolViewMode}
-                />
-              }
-              description={withModeNote(a.toolViewDesc, toolViewShadowed)}
-              id={settingElementId(ids.toolView)}
-              title={a.toolViewTitle}
-            />
-          )}
+          {show('chat-display') && <ToolCallSettings />}
 
           {show('chat-display') && (
             <ToggleRow

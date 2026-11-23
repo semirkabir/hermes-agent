@@ -51,6 +51,7 @@ import { cn } from '@/lib/utils'
 import { recordPreviewArtifact } from '@/store/preview-status'
 import { sessionApprovalRequest } from '@/store/prompts'
 import { $showToolActivity } from '@/store/tool-activity'
+import { $toolCallStyle } from '@/store/tool-call-style'
 import { $toolRowDismissed, dismissToolRow } from '@/store/tool-dismiss'
 import { $toolProgressFor, formatToolProgress } from '@/store/tool-progress'
 import {
@@ -58,7 +59,8 @@ import {
   $hideCodeDiffs,
   $toolDisclosureOpen,
   $toolViewMode,
-  setToolDisclosureOpen
+  setToolDisclosureOpen,
+  type ToolViewMode
 } from '@/store/tool-view'
 
 import { isApprovalActivity, isCurrentTurnMessage } from './approval-activity'
@@ -79,10 +81,22 @@ import {
   toolEntryDisclosureId,
   type ToolPart,
   type ToolStatus,
-  type ToolTitleAction
+  type ToolTitleAction,
+  type ToolView
 } from './fallback-model'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 import { ToolRunTicker } from './run-ticker'
+import { ToolCard, ToolCardRowContext, ToolCardRowFrame, ToolCardRowHeader, type ToolCardRun } from './tool-card'
+import {
+  cardRowStatus,
+  diffCountLabel,
+  failedRowSubtext,
+  failedRowTitle,
+  formatCardDuration,
+  joinMeta,
+  rowCountLabel,
+  rowDurationSeconds
+} from './tool-card-model'
 
 // `true` when a ToolEntry is rendered inside an embedding wrapper that owns
 // the per-row chrome (timer / preview). The flat ToolGroupSlot sets this
@@ -378,6 +392,9 @@ function ToolEntry({ part }: ToolEntryProps) {
   const runDisclosureId = useContext(ToolRunDisclosureContext)
   const toolViewMode = useStore($toolViewMode)
   const hideCodeDiffs = useStore($hideCodeDiffs)
+  // Set when this row sits inside a tool card (the `cards` style): the row
+  // wears the card's chrome.
+  const cardMode = useContext(ToolCardRowContext) !== null
 
   // `ToolFallback` rebuilds the `part` wrapper each render, defeating the memos
   // below and re-running buildToolView (full JSON.stringify of result) on every
@@ -607,6 +624,44 @@ function ToolEntry({ part }: ToolEntryProps) {
     return null
   }
 
+  const body = open ? (
+    <ToolEntryBody
+      copyAction={copyAction}
+      detailSections={detailSections}
+      hasSearchHits={hasSearchHits}
+      isFileEdit={isFileEdit}
+      outputAlt={copy.outputAlt}
+      part={part}
+      renderDetailAsCode={renderDetailAsCode}
+      searchResultsLabel={searchResultsLabel}
+      showDetail={showDetail}
+      showInlineDiff={showInlineDiff}
+      showPayload={showPayload}
+      toolViewMode={toolViewMode}
+      view={view}
+    />
+  ) : null
+
+  if (cardMode) {
+    return (
+      <ToolCardEntry
+        body={body}
+        detailSummary={detailSections.summary}
+        diffStats={showDiffStats ? diffStats : null}
+        disclosureId={disclosureId}
+        expandable={hasExpandableContent}
+        isFileEdit={isFileEdit}
+        isPending={isPending}
+        messageRunning={messageRunning}
+        open={open}
+        part={stablePart}
+        runDisclosureId={runDisclosureId}
+        runningMeta={<ToolRunningMeta seconds={elapsed} toolCallId={toolCallId} />}
+        view={view}
+      />
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -675,118 +730,249 @@ function ToolEntry({ part }: ToolEntryProps) {
           </span>
         </DisclosureRow>
       </div>
-      {open && (
-        <div className="relative grid w-full min-w-0 max-w-full gap-1.5 overflow-hidden p-1.5">
-          {copyAction.text && (
-            <CopyButton
-              appearance="inline"
-              className="absolute right-4 top-1.5 z-10 h-5 gap-0 rounded-md px-1 opacity-5 transition-opacity group-hover/tool-block:opacity-100 hover:opacity-100 focus-visible:opacity-100"
-              iconClassName="size-3"
-              label={copyAction.label}
-              showLabel={false}
-              side="left"
-              stopPropagation
-              text={copyAction.text}
-            />
+      {body}
+    </div>
+  )
+}
+
+interface ToolEntryBodyProps {
+  copyAction: ReturnType<typeof toolCopyPayload>
+  detailSections: { body: string; summary: string }
+  hasSearchHits: boolean
+  isFileEdit: boolean
+  outputAlt: string
+  part: ToolPart
+  renderDetailAsCode: boolean
+  searchResultsLabel?: string
+  showDetail: boolean
+  showInlineDiff: boolean
+  showPayload: boolean
+  toolViewMode: ToolViewMode
+  view: ToolView
+}
+
+/** An open row's body: output, diff, search hits or payload. Shared by the compact row and the card row. */
+function ToolEntryBody({
+  copyAction,
+  detailSections,
+  hasSearchHits,
+  isFileEdit,
+  outputAlt,
+  part,
+  renderDetailAsCode,
+  searchResultsLabel,
+  showDetail,
+  showInlineDiff,
+  showPayload,
+  toolViewMode,
+  view
+}: ToolEntryBodyProps) {
+  return (
+    <div className="relative grid w-full min-w-0 max-w-full gap-1.5 overflow-hidden p-1.5">
+      {copyAction.text && (
+        <CopyButton
+          appearance="inline"
+          className="absolute right-4 top-1.5 z-10 h-5 gap-0 rounded-md px-1 opacity-5 transition-opacity group-hover/tool-block:opacity-100 hover:opacity-100 focus-visible:opacity-100"
+          iconClassName="size-3"
+          label={copyAction.label}
+          showLabel={false}
+          side="left"
+          stopPropagation
+          text={copyAction.text}
+        />
+      )}
+      {part.toolName === 'terminal' && toolViewMode !== 'technical' && (
+        <TerminalTranscript command={view.terminalCommand} exitCode={view.terminalExitCode} />
+      )}
+      {view.imageUrl && (
+        <div className="max-w-72 overflow-hidden rounded-[0.25rem] border border-(--ui-stroke-tertiary)">
+          <MarkdownImage alt={outputAlt} src={view.imageUrl} />
+        </div>
+      )}
+      {hasSearchHits && view.searchHits && (
+        <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
+          {view.searchQuery && (
+            <p className="mb-1 flex min-w-0 gap-1.5 wrap-anywhere">
+              <span className="shrink-0 font-medium text-(--ui-text-tertiary)">Search</span>
+              <span>{view.searchQuery}</span>
+            </p>
           )}
-          {part.toolName === 'terminal' && toolViewMode !== 'technical' && (
-            <TerminalTranscript command={view.terminalCommand} exitCode={view.terminalExitCode} />
-          )}
-          {view.imageUrl && (
-            <div className="max-w-72 overflow-hidden rounded-[0.25rem] border border-(--ui-stroke-tertiary)">
-              <MarkdownImage alt={copy.outputAlt} src={view.imageUrl} />
-            </div>
-          )}
-          {hasSearchHits && view.searchHits && (
-            <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
-              {view.searchQuery && (
-                <p className="mb-1 flex min-w-0 gap-1.5 wrap-anywhere">
-                  <span className="shrink-0 font-medium text-(--ui-text-tertiary)">Search</span>
-                  <span>{view.searchQuery}</span>
-                </p>
-              )}
-              {searchResultsLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{searchResultsLabel}</p>}
-              <SearchResultsList hits={view.searchHits} />
-            </div>
-          )}
-          {showInlineDiff && (
-            <FileDiffPanel className="-mt-1.5" diff={view.inlineDiff} path={isFileEdit ? view.subtitle : undefined} />
-          )}
-          {showDetail &&
-            !showPayload &&
-            (view.status === 'error' ? (
-              detailSections.summary || detailSections.body ? (
-                <div className="max-w-full text-xs leading-relaxed text-destructive">
-                  {detailSections.summary && (
-                    <LinkifiedText className="block font-medium" text={detailSections.summary} />
-                  )}
-                  {detailSections.body && (
-                    <pre
-                      className={cn(
-                        'max-h-56 overflow-auto whitespace-pre-wrap wrap-anywhere font-mono text-[0.7rem] leading-[1.55] text-(--ui-text-secondary)',
-                        detailSections.summary && 'mt-1.5'
-                      )}
-                    >
-                      {clampForDisplay(detailSections.body)}
-                    </pre>
-                  )}
-                </div>
-              ) : null
-            ) : view.stdout || view.stderr ? (
-              // Stdout + stderr split: render both as labeled blocks. stderr
-              // is intentionally NOT painted destructive — many CLIs log
-              // informational output there.
-              <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
-                {view.detailLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{view.detailLabel}</p>}
-                {view.stdout && (
-                  <div className="space-y-0.5">
-                    {view.stderr && <p className={TOOL_SECTION_LABEL_CLASS}>stdout</p>}
-                    <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere')}>
-                      {view.rendersAnsi ? (
-                        <AnsiText text={clampForDisplay(view.stdout)} />
-                      ) : (
-                        clampForDisplay(view.stdout)
-                      )}
-                    </pre>
-                  </div>
-                )}
-                {view.stderr && (
-                  <div className={cn('space-y-0.5', view.stdout && 'mt-1.5')}>
-                    <p className={TOOL_SECTION_LABEL_CLASS}>stderr</p>
-                    <pre
-                      className={cn(
-                        TOOL_SECTION_PRE_CLASS,
-                        'whitespace-pre-wrap wrap-anywhere text-(--ui-text-tertiary)'
-                      )}
-                    >
-                      {view.rendersAnsi ? (
-                        <AnsiText text={clampForDisplay(view.stderr)} />
-                      ) : (
-                        clampForDisplay(view.stderr)
-                      )}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
-                {view.detailLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{view.detailLabel}</p>}
-                {renderDetailAsCode ? (
-                  <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere')}>
-                    {view.rendersAnsi ? <AnsiText text={clampForDisplay(view.detail)} /> : clampForDisplay(view.detail)}
-                  </pre>
-                ) : (
-                  <CompactMarkdown
-                    className={cn(TOOL_SECTION_SURFACE_CLASS, 'wrap-anywhere')}
-                    text={clampForDisplay(view.detail)}
-                  />
-                )}
-              </div>
-            ))}
-          {showPayload && <ToolPayloadDisclosure args={part.args} result={part.result} />}
+          {searchResultsLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{searchResultsLabel}</p>}
+          <SearchResultsList hits={view.searchHits} />
+        </div>
+      )}
+      {showInlineDiff && (
+        <FileDiffPanel className="-mt-1.5" diff={view.inlineDiff} path={isFileEdit ? view.subtitle : undefined} />
+      )}
+      {showDetail && !showPayload && (
+        <ToolEntryDetail detailSections={detailSections} renderDetailAsCode={renderDetailAsCode} view={view} />
+      )}
+      {showPayload && <ToolPayloadDisclosure args={part.args} result={part.result} />}
+    </div>
+  )
+}
+
+interface ToolEntryDetailProps {
+  detailSections: { body: string; summary: string }
+  renderDetailAsCode: boolean
+  view: ToolView
+}
+
+/** An open row's text detail: the error, the split stdout/stderr, or the plain output. */
+function ToolEntryDetail({ detailSections, renderDetailAsCode, view }: ToolEntryDetailProps) {
+  if (view.status === 'error') {
+    return detailSections.summary || detailSections.body ? (
+      <div className="max-w-full text-xs leading-relaxed text-destructive">
+        {detailSections.summary && <LinkifiedText className="block font-medium" text={detailSections.summary} />}
+        {detailSections.body && (
+          <pre
+            className={cn(
+              'max-h-56 overflow-auto whitespace-pre-wrap wrap-anywhere font-mono text-[0.7rem] leading-[1.55] text-(--ui-text-secondary)',
+              detailSections.summary && 'mt-1.5'
+            )}
+          >
+            {clampForDisplay(detailSections.body)}
+          </pre>
+        )}
+      </div>
+    ) : null
+  }
+
+  if (view.stdout || view.stderr) {
+    return <ToolStreamsDetail view={view} />
+  }
+
+  return (
+    <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
+      {view.detailLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{view.detailLabel}</p>}
+      {renderDetailAsCode ? (
+        <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere')}>
+          {view.rendersAnsi ? <AnsiText text={clampForDisplay(view.detail)} /> : clampForDisplay(view.detail)}
+        </pre>
+      ) : (
+        <CompactMarkdown
+          className={cn(TOOL_SECTION_SURFACE_CLASS, 'wrap-anywhere')}
+          text={clampForDisplay(view.detail)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Stdout + stderr split: render both as labeled blocks. stderr is
+// intentionally NOT painted destructive — many CLIs log informational
+// output there.
+function ToolStreamsDetail({ view }: { view: ToolView }) {
+  return (
+    <div className="max-w-full text-xs leading-relaxed text-(--ui-text-secondary)">
+      {view.detailLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{view.detailLabel}</p>}
+      {view.stdout && (
+        <div className="space-y-0.5">
+          {view.stderr && <p className={TOOL_SECTION_LABEL_CLASS}>stdout</p>}
+          <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere')}>
+            {view.rendersAnsi ? <AnsiText text={clampForDisplay(view.stdout)} /> : clampForDisplay(view.stdout)}
+          </pre>
+        </div>
+      )}
+      {view.stderr && (
+        <div className={cn('space-y-0.5', view.stdout && 'mt-1.5')}>
+          <p className={TOOL_SECTION_LABEL_CLASS}>stderr</p>
+          <pre className={cn(TOOL_SECTION_PRE_CLASS, 'whitespace-pre-wrap wrap-anywhere text-(--ui-text-tertiary)')}>
+            {view.rendersAnsi ? <AnsiText text={clampForDisplay(view.stderr)} /> : clampForDisplay(view.stderr)}
+          </pre>
         </div>
       )}
     </div>
+  )
+}
+
+interface ToolCardEntryProps {
+  body: ReactNode
+  detailSummary: string
+  /** Line counts of a file edit's diff, when they show. */
+  diffStats: { added: number; removed: number } | null
+  disclosureId: string
+  expandable: boolean
+  isFileEdit: boolean
+  isPending: boolean
+  messageRunning: boolean
+  open: boolean
+  part: ToolPart
+  runDisclosureId: string | null
+  runningMeta: ReactNode
+  view: ToolView
+}
+
+/** A `ToolEntry` inside a tool card: the same title, detail and body, in the card's row chrome. */
+function ToolCardEntry({
+  body,
+  detailSummary,
+  diffStats,
+  disclosureId,
+  expandable,
+  isFileEdit,
+  isPending,
+  messageRunning,
+  open,
+  part,
+  runDisclosureId,
+  runningMeta,
+  view
+}: ToolCardEntryProps) {
+  const scope = useContext(ToolCardRowContext)
+  const failed = !isPending && view.status === 'error'
+
+  // "Could not read config.yaml": the failure reads off the row's own present-tense title.
+  const failedTitle = useMemo(() => {
+    if (!failed) {
+      return ''
+    }
+
+    const present = buildToolView(
+      { ...part, completedAt: undefined, interrupted: undefined, isError: undefined, result: undefined },
+      ''
+    ).title
+
+    return failedRowTitle(present, part.toolName)
+  }, [failed, part])
+
+  // Waiting on approval: the inline approval row in the card stands in for this call.
+  if (part.toolCallId !== undefined && part.toolCallId === scope?.approvalCallId) {
+    return null
+  }
+
+  const status = cardRowStatus(isPending, part.result, view.status)
+  const count = diffStats ? diffCountLabel(diffStats) : rowCountLabel(part, view)
+
+  return (
+    <ToolCardRowFrame
+      animateIn={messageRunning}
+      data-file-edit={isFileEdit && open ? '' : undefined}
+      data-tool-open={open ? '' : undefined}
+    >
+      <ToolCardRowHeader
+        done={!isPending && !failed && part.result !== undefined}
+        expandable={expandable}
+        failed={failed}
+        filePath={isFileEdit ? view.subtitle : undefined}
+        icon={view.icon}
+        meta={joinMeta(count, formatCardDuration(rowDurationSeconds(part)))}
+        onToggle={() => {
+          if (!open && runDisclosureId) {
+            setToolDisclosureOpen(runDisclosureId, true)
+          }
+
+          setToolDisclosureOpen(disclosureId, !open)
+        }}
+        open={open}
+        pending={isPending}
+        runningMeta={runningMeta}
+        status={status}
+        subtext={failedRowSubtext(failed, open, view, detailSummary)}
+        title={failed ? failedTitle : view.title}
+      />
+      {body && <div className="min-w-0 max-w-full pb-2 pl-[2.375rem] pr-3">{body}</div>}
+    </ToolCardRowFrame>
   )
 }
 
@@ -907,6 +1093,8 @@ function ToolRunHeader({
 
 interface ToolRunState {
   approvalActivity: boolean
+  /** The run's calls, reference-stable while nothing about them changes (the card's icon stack and failed count). */
+  tools: readonly ToolPart[]
   completedAt?: number
   count: number
   /** Disclosure id of each row in the run, so the run can tell when one is open. */
@@ -991,13 +1179,20 @@ function useToolRun(startIndex: number, endIndex: number): ToolRunState {
                   : Math.min(earliest, tool.timestamp),
             undefined
           ),
-          summary: summarizeToolRun(tools, live)
+          summary: summarizeToolRun(tools, live),
+          tools: timelineTools
         }
       }
     }
 
     return cache.current.value
   })
+}
+
+interface ToolRunProps {
+  children?: ReactNode
+  endIndex: number
+  startIndex: number
 }
 
 /**
@@ -1014,11 +1209,7 @@ function useToolRun(startIndex: number, endIndex: number): ToolRunState {
  * the whole of it until the user opens it. `ToolEmbedContext` is false so each
  * row still owns its own chrome (timer / copy) when shown.
  */
-const ToolRun: FC<PropsWithChildren<{ endIndex: number; startIndex: number }>> = ({
-  children,
-  endIndex,
-  startIndex
-}) => {
+const CompactToolRun: FC<ToolRunProps> = ({ children, endIndex, startIndex }) => {
   const messageRunning = useAuiState(selectMessageRunning)
 
   const { completedAt, count, entryIds, key, live, startedAt, summary, approvalActivity } = useToolRun(
@@ -1070,6 +1261,36 @@ const ToolRun: FC<PropsWithChildren<{ endIndex: number; startIndex: number }>> =
     </ToolRunDisclosureContext.Provider>
   )
 }
+
+/** The `cards` style: the same rows under one header line that owns the run's collapse and pending approval. */
+const CardToolRun: FC<ToolRunProps> = ({ children, endIndex, startIndex }) => {
+  const messageRunning = useAuiState(selectMessageRunning)
+  const { count, entryIds, key, live, tools } = useToolRun(startIndex, endIndex)
+  const currentTurn = useAuiState(state => isCurrentTurnMessage(state.thread.messages, state.message.id))
+  const disclosureId = `tool-run:${key}`
+  const persistedOpen = useStore($toolDisclosureOpen(disclosureId))
+  const rowOpen = useStore(useMemo(() => $anyToolDisclosureOpen(entryIds), [entryIds]))
+  const enterRef = useEnterAnimation(messageRunning, `tool-run:${key}`)
+  const run = useMemo<ToolCardRun>(() => ({ count, entryIds, key, live, tools }), [count, entryIds, key, live, tools])
+
+  return (
+    <ToolRunDisclosureContext.Provider value={disclosureId}>
+      <ToolCard
+        currentTurn={currentTurn}
+        disclosureId={disclosureId}
+        enterRef={enterRef}
+        persistedOpen={persistedOpen}
+        rowOpen={rowOpen}
+        run={run}
+      >
+        {children}
+      </ToolCard>
+    </ToolRunDisclosureContext.Provider>
+  )
+}
+
+const ToolRun: FC<ToolRunProps> = props =>
+  useStore($toolCallStyle) === 'cards' ? <CardToolRun {...props} /> : <CompactToolRun {...props} />
 
 // The name the run splitter classifies a part by: connector and MCP calls are cards, and so is set_theme
 // reached through the tool_call bridge (a reloaded transcript).
