@@ -47,6 +47,21 @@ describe('normalizePreviewAddress', () => {
     expect(normalizePreviewAddress('127.0.0.1:8080/app')).toBe('http://127.0.0.1:8080/app')
   })
 
+  it('sends words and phrases to Google instead of guessing a host', () => {
+    expect(normalizePreviewAddress('test')).toBe('https://www.google.com/search?q=test')
+    expect(normalizePreviewAddress('how do webviews work')).toBe(
+      'https://www.google.com/search?q=how%20do%20webviews%20work'
+    )
+    expect(normalizePreviewAddress('c++ & rust?')).toBe('https://www.google.com/search?q=c%2B%2B%20%26%20rust%3F')
+  })
+
+  it('still treats real host shapes as addresses', () => {
+    expect(normalizePreviewAddress('google.com/maps')).toBe('https://google.com/maps')
+    expect(normalizePreviewAddress('192.168.1.10')).toBe('https://192.168.1.10')
+    expect(normalizePreviewAddress('homebase:8080')).toBe('https://homebase:8080')
+    expect(normalizePreviewAddress('localhost')).toBe('http://localhost')
+  })
+
   it('rejects empty input', () => {
     expect(normalizePreviewAddress('')).toBeNull()
     expect(normalizePreviewAddress('   ')).toBeNull()

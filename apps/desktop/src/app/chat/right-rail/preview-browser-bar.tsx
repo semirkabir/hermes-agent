@@ -67,7 +67,39 @@ interface PreviewBrowserBarProps {
  * place to reach them. Everything a browser normally loads — including
  * `about:blank` and `file://` — goes through, because this IS a browser and
  * the person typing already owns the machine it runs on.
+ *
+ * Anything that doesn't look like an address (a bare word, a phrase with
+ * spaces) is a search, the way every real browser's omnibox treats it:
+ * `test` used to become `https://test` and die on ERR_NAME_NOT_RESOLVED.
  */
+export const BROWSER_SEARCH_URL = 'https://www.google.com/search?q='
+export const BROWSER_HOME_URL = 'https://www.google.com/'
+
+export function browserSearchUrl(query: string): string {
+  return `${BROWSER_SEARCH_URL}${encodeURIComponent(query.trim())}`
+}
+
+/** Does this scheme-less input name a host (and optional port / path)? A dot
+ *  with an alphabetic TLD, an IPv4 address, or an explicit `host:port`. A
+ *  single word without any of those is a search term, not an intranet host. */
+function looksLikeHost(address: string): boolean {
+  const host = address.split(/[/?#]/, 1)[0] ?? ''
+
+  if (/^\[[0-9a-f:.]+\](?::\d+)?$/i.test(host)) {
+    return true
+  }
+
+  if (/^[\w.-]+:\d{1,5}$/.test(host)) {
+    return true
+  }
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+    return true
+  }
+
+  return /^(?:[\w-]+\.)+[a-z][a-z0-9-]*\.?$/i.test(host)
+}
+
 export function normalizePreviewAddress(value: string): null | string {
   const address = value.trim()
 
@@ -81,6 +113,14 @@ export function normalizePreviewAddress(value: string): null | string {
   // scheme test before the host guess.
   const scheme = /^(about|blob|chrome|data|devtools|file|ftp|https?|javascript|view-source):/i.exec(address)?.[1]
   const loopback = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:[/?#]|$)/i.test(address)
+
+  // Words, phrases, and anything else that can't be a host go to search. A
+  // stray `://` keeps the old path so half-typed URLs still read as invalid
+  // instead of silently becoming a search for the typo.
+  if (!scheme && !loopback && !address.includes('://') && (/\s/.test(address) || !looksLikeHost(address))) {
+    return browserSearchUrl(address)
+  }
+
   const candidate = scheme ? address : `${loopback ? 'http' : 'https'}://${address}`
 
   // Script-bearing schemes run INSIDE the page the user is looking at (or mint
