@@ -30,7 +30,7 @@ export const enProjects: Translations['sidebar']['projects'] = {
   iconSearchPlaceholder: 'Search 200k+ icons',
   iconSearchEmpty: 'No icons found',
   iconSearchError: "Couldn't reach Iconify",
-  iconSearchHint: 'Icons from Iconify',
+  iconSearchHint: 'Searches are sent to api.iconify.design',
   menuAddFolder: 'Add folder',
   menuSetActive: 'Set active',
   menuDelete: 'Delete',

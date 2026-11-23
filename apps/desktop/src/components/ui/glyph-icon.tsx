@@ -1,7 +1,7 @@
 import type { Icon } from '@tabler/icons-react'
-import type * as React from 'react'
+import * as React from 'react'
 
-import { iconifyMaskUrl, isIconifyName } from '@/lib/iconify'
+import { cacheIconifyIcon, iconifyMaskUrl, isIconifyCached, isIconifyName } from '@/lib/iconify'
 import { cn } from '@/lib/utils'
 
 import { Codicon } from './codicon'
@@ -10,6 +10,8 @@ interface GlyphIconProps extends React.HTMLAttributes<HTMLElement> {
   /** A codicon name ("rocket") or an Iconify name ("mdi:rocket"). */
   name: string
   size?: number | string
+  /** A throwaway preview (search results): draw from the network without filling the local cache. */
+  preview?: boolean
 }
 
 /**
@@ -17,10 +19,32 @@ interface GlyphIconProps extends React.HTMLAttributes<HTMLElement> {
  * currentColor mask so it inherits the same tint, size and hover color a
  * codicon would. Iconify markup never reaches the DOM (a mask reads alpha only).
  */
-export function GlyphIcon({ className, name, size, style, ...props }: GlyphIconProps) {
-  if (!isIconifyName(name)) {
-    return <Codicon className={className} name={name} size={size} style={style} {...props} />
-  }
+export function GlyphIcon({ name, preview, ...props }: GlyphIconProps) {
+  return isIconifyName(name) ? (
+    <IconifyGlyph name={name} preview={preview} {...props} />
+  ) : (
+    <Codicon name={name} {...props} />
+  )
+}
+
+function IconifyGlyph({ className, name, preview, size, style, ...props }: GlyphIconProps) {
+  const [, setCached] = React.useState(false)
+
+  // The icon name is shared through the project record, but the SVG cache is per
+  // device: fill it on first sight so a project picked elsewhere also works offline.
+  React.useEffect(() => {
+    if (preview || isIconifyCached(name)) {
+      return
+    }
+
+    let live = true
+
+    void cacheIconifyIcon(name).then(() => live && setCached(true))
+
+    return () => {
+      live = false
+    }
+  }, [name, preview])
 
   const mask = iconifyMaskUrl(name)
 

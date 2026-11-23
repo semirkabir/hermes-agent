@@ -65,10 +65,12 @@ interface IconTileProps {
   label: string
   name: string
   onPick: (name: null | string) => void
+  /** Search result: not yet chosen, so don't cache its SVG. */
+  preview?: boolean
   selected: boolean
 }
 
-function IconTile({ color, label, name, onPick, selected }: IconTileProps) {
+function IconTile({ color, label, name, onPick, preview, selected }: IconTileProps) {
   return (
     <Tip label={label}>
       <button
@@ -79,7 +81,7 @@ function IconTile({ color, label, name, onPick, selected }: IconTileProps) {
         style={selected && color ? { color } : undefined}
         type="button"
       >
-        <GlyphIcon name={name} size="0.8125rem" />
+        <GlyphIcon name={name} preview={preview} size="0.8125rem" />
       </button>
     </Tip>
   )
@@ -223,6 +225,7 @@ export function ProjectAppearancePicker({ color, icon, noColorLabel, onColor, on
                   label={setLabel(name)}
                   name={name}
                   onPick={pick}
+                  preview
                   selected={icon === name}
                 />
               ))}

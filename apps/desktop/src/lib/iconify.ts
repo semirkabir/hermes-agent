@@ -8,11 +8,17 @@ export const ICONIFY_API = 'https://api.iconify.design'
 
 const CACHE_KEY = 'hermes.desktop.iconify.v1'
 const CACHE_MAX = 200
+// Real icons are well under 2 KB; the cap keeps one oversized response from eating the localStorage quota.
+const SVG_MAX_CHARS = 16_000
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:[-_][a-z0-9]+)*$/
 
 /** A picked Iconify icon is stored as "prefix:name"; codicons never contain ':'. */
 export function isIconifyName(name: null | string | undefined): name is string {
   return Boolean(name && NAME_RE.test(name))
+}
+
+function isSvgMarkup(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= SVG_MAX_CHARS && /^\s*<svg[\s>]/i.test(value)
 }
 
 function splitName(name: string): [string, string] {
@@ -40,7 +46,13 @@ function readCache(): SvgCache {
   try {
     const raw = window.localStorage.getItem(CACHE_KEY)
     const parsed: unknown = raw ? JSON.parse(raw) : {}
-    memory = parsed && typeof parsed === 'object' ? (parsed as SvgCache) : {}
+
+    // Storage is user-editable: keep only well-formed entries so a bad value can never reach a mask URL.
+    memory = Object.fromEntries(
+      Object.entries(parsed && typeof parsed === 'object' ? parsed : {}).filter(
+        (entry): entry is [string, string] => isIconifyName(entry[0]) && isSvgMarkup(entry[1])
+      )
+    )
   } catch {
     memory = {}
   }
@@ -80,7 +92,7 @@ export function isIconifyCached(name: string): boolean {
 
 const inflight = new Map<string, Promise<void>>()
 
-/** Fetch an icon's SVG once and keep it locally (called when a project picks it). */
+/** Fetch an icon's SVG once and keep it locally (on pick, and on first render of an icon picked elsewhere). */
 export function cacheIconifyIcon(name: string): Promise<void> {
   if (!isIconifyName(name) || isIconifyCached(name)) {
     return Promise.resolve()
@@ -97,7 +109,7 @@ export function cacheIconifyIcon(name: string): Promise<void> {
     .then(svg => {
       // A mask only reads alpha, so scripts/handlers in the markup can never run;
       // still, keep only something that is actually an <svg> document.
-      if (/^\s*<svg[\s>]/i.test(svg)) {
+      if (isSvgMarkup(svg)) {
         writeCache(name, svg)
       }
     })
