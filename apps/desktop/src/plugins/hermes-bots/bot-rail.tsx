@@ -1,6 +1,6 @@
 import { cn, host, Tip, useValue } from '@hermes/plugin-sdk'
 
-import { avatarColor, botAppearance, BotFace } from './avatar'
+import { avatarColor, botAppearance } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
 import { $botChatFocused, $focusedBotOwner, $selectedRosterKey, focusedRosterOwner } from './bot-state'
 import { $botMeta, $lastRoster, botRosterKey, useRoster } from './data'
@@ -8,6 +8,8 @@ import { $groupChatWorkspace } from './group-chat'
 import { $activeGroupMemberKeys } from './group-presence'
 import { isBotHidden } from './hidden-bots'
 import { displayName } from './labels'
+import { LiveBotFace } from './live-face'
+import { useAvatarState } from './motion-state'
 import { openRosterBot } from './roster-actions'
 import { sortRosterBots } from './roster-pane-derivation'
 import { botRosterMeta } from './routing'
@@ -58,6 +60,7 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
   const { shape, color, image } = botAppearance(bot.name, meta)
   const photo = Boolean(image && !isBackfilledFacePng(image))
   const mood = botWorkingMood(bot, focusedOwner, turnBusy, activeConnectionId, Date.now(), groupKeys)
+  const motion = useAvatarState(mood)
   const isActive = botRowOwnsWorkspace(bot, activeGroup, botChatFocused, focusedOwner, selectedRosterKey)
   const label = displayName(bot, meta)
 
@@ -80,13 +83,14 @@ function BotRailFace({ bot }: { bot: RosterRow }) {
         }}
         type="button"
       >
-        <BotFace
+        <LiveBotFace
           color={avatarColor(color, bot.name)}
           image={photo ? image : null}
           mood={mood}
           name={bot.name}
           shape={shape}
           size={28}
+          state={motion}
         />
         {mood !== 'idle' && (
           <span

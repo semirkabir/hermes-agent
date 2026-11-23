@@ -194,6 +194,15 @@ function attributeText(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/** The blob library's own body colour for a face, so an animated redraw of
+ *  it keeps the palette the static face shows. */
+export function blobBodyColor(shape: null | string | undefined, name: string): null | string {
+  const markup = blobMarkup(shape, name, 40)
+  const fill = markup?.match(/<g fill="(#[0-9a-fA-F]{3,8})"/)
+
+  return fill ? fill[1] : null
+}
+
 /** Static SVG markup for a blob face, tagged data-bot-face so the roster's
  *  PNG backfill (pushLocalAvatars → rasterizeSvgToPng) still finds it. */
 function blobMarkup(shape: null | string | undefined, name: string, size: number) {

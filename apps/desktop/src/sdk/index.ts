@@ -23,10 +23,8 @@ import type { ReactNode } from 'react'
 
 import { capabilityScoped, getApiRequestConnection } from '@/api/client'
 import { mutateSessionFenced } from '@/api/sessions'
-import { PRIMARY_SESSION_VIEW } from '@/app/chat/session-view'
 import { openSession, type OpenSessionIntent } from '@/app/open-session'
 import { syncWorkspaceRoute } from '@/app/routes'
-import type { ClientSessionState } from '@/app/types'
 import {
   $newSessionTabAction,
   $paneVisible,
@@ -110,6 +108,7 @@ import type { SessionMutationSnapshot } from '../../../shared/src/session-http-m
 import { logBotWake } from './bot-wake-log'
 import { pluginDecisions, profiles, skills, toolsets } from './bridge'
 import { composerHost } from './composer'
+import { $focusedActivity, $focusedAwaitingResponse, $focusedBusy, type PluginFocusedActivity } from './focused-turn'
 import { i18nHost } from './i18n'
 import { planPluginOpenSession } from './plugin-open-session-plan'
 import { dropLeftoverProfilePrefs, warmProfile } from './profile-local'
@@ -126,6 +125,7 @@ import { $viewport, type ViewportRect } from './viewport'
 
 /** Pane, status bar and titlebar slots; see `./areas` for the mount rules. */
 export * from './areas'
+export type { PluginFocusedActivity } from './focused-turn'
 /** The plugin authoring contract (`HermesPlugin`, `PluginContext`, `ctx.*` door types). */
 export type * from './plugin-contract'
 export type { PluginProfileRequestOptions, PluginProfileRoute } from './profile-request'
@@ -133,30 +133,6 @@ export type { PluginProfileRequestOptions, PluginProfileRoute } from './profile-
 // -- state: readonly views over the app's live atoms -------------------------
 
 const readonlyAtom = <T>(atomLike: ReadableAtom<T>): ReadableAtom<T> => atomLike
-
-/**
- * Turn flag for the FOCUSED chat — same semantics as the statusbar's busy
- * pulse. While the focused surface is the primary workspace (or a draft with
- * no runtime slice yet) this reads the primary view, which itself falls back
- * to the global draft atoms. Once a session TILE holds focus, the tile's own
- * state slice is authoritative — a background session can never leak in.
- */
-const focusedTurnFlag = (
-  select: (state: ClientSessionState) => boolean,
-  $primary: ReadableAtom<boolean>
-): ReadableAtom<boolean> =>
-  computed(
-    [$focusedStoredSessionId, $selectedStoredSessionId, $focusedSessionState, $primary],
-    (focused, selected, state, primary) =>
-      !focused || focused === selected ? primary : Boolean(state && select(state))
-  )
-
-const $focusedBusy = focusedTurnFlag(state => state.busy, PRIMARY_SESSION_VIEW.$busy)
-
-const $focusedAwaitingResponse = focusedTurnFlag(
-  state => state.awaitingResponse,
-  PRIMARY_SESSION_VIEW.$awaitingResponse
-)
 
 export interface PluginFocusedSessionOwner {
   connectionId: string
@@ -575,6 +551,8 @@ export const host = {
     connectionId: readonlyAtom<null | string>($activeConnectionId),
     /** Active workspace cwd ('' when detached). */
     cwd: readonlyAtom<string>($currentCwd),
+    /** What the focused chat's turn is doing (phase + running tool). */
+    focusedActivity: readonlyAtom<PluginFocusedActivity>($focusedActivity),
     /** Runtime id of the FOCUSED chat session — the interacted tile, else the
      *  primary. Prefer this over `activeSessionId` for any readout that
      *  should follow the user between tiles (context, tokens, cost). */
